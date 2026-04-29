@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+openai
+apscheduler
+rouge-score
+python-dotenv
+scikit-learn
+numpy
+requests
+streamlit
+plotly
+pandas
