@@ -397,10 +397,19 @@ pip install -r requirements.txt
 
 # 3. Configure your API key
 cp .env.example .env
-# Edit .env and add your key:
-# LLM_PROVIDER=groq
-# GROQ_API_KEY=your_key_here
 ```
+
+Edit `.env` and fill in your Azure OpenAI credentials:
+
+```env
+LLM_PROVIDER=azure
+AZURE_OPENAI_API_KEY=your_key_here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
+AZURE_OPENAI_API_VERSION=2024-02-01
+```
+
+> **Why Azure?** Azure OpenAI has no RPM/TPM rate limits at enterprise tier, making evaluation fast and reliable. Groq free tier hits limits quickly with the 4-LLM-call evaluation pipeline.
 
 ### Run the System (3 terminals)
 

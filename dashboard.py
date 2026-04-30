@@ -37,6 +37,8 @@ def load_evaluations() -> pd.DataFrame:
         SELECT e.id, e.run_id, e.question, e.faithfulness, e.relevancy,
                e.completeness, e.rouge_l, e.overall_score,
                e.faithfulness_reason, e.relevancy_reason, e.completeness_reason,
+               e.factual_anchor_score, e.factual_hallucinated,
+               e.golden_rouge_l, e.contradicts_golden, e.contradiction_detail,
                tr.answer, tr.retrieved_context, e.timestamp
         FROM evaluations e
         JOIN test_runs tr ON e.run_id = tr.id
@@ -44,6 +46,15 @@ def load_evaluations() -> pd.DataFrame:
     """).fetchall()
     conn.close()
     return pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
+
+
+def load_golden_answers() -> dict:
+    if not os.path.exists(DB_PATH):
+        return {}
+    conn = get_conn()
+    rows = conn.execute("SELECT question, golden_answer FROM golden_answers").fetchall()
+    conn.close()
+    return {r["question"]: r["golden_answer"] for r in rows}
 
 
 def load_consistency() -> pd.DataFrame:
@@ -115,6 +126,7 @@ if auto_refresh:
 
 df = load_evaluations()
 cons_df = load_consistency()
+golden_map = load_golden_answers()
 
 # ── header ────────────────────────────────────────────────────────────────────
 
@@ -136,16 +148,28 @@ avg_faith    = df["faithfulness"].mean()
 avg_relev    = df["relevancy"].mean()
 avg_compl    = df["completeness"].mean()
 avg_rouge    = df["rouge_l"].mean()
+avg_factual  = df["factual_anchor_score"].mean() if "factual_anchor_score" in df.columns and df["factual_anchor_score"].notna().any() else None
+avg_golden_r = df["golden_rouge_l"].mean() if "golden_rouge_l" in df.columns and df["golden_rouge_l"].notna().any() else None
 flagged_cnt  = int(cons_df["flagged"].sum()) if not cons_df.empty else 0
+contradicts_cnt = int(df["contradicts_golden"].sum()) if "contradicts_golden" in df.columns else 0
 
-c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-c1.metric("Total Runs",       total_runs)
-c2.metric("Questions Tested", unique_qs)
-c3.metric("Overall Score",    f"{avg_overall:.2f}", delta=None)
-c4.metric("Faithfulness",     f"{avg_faith:.2f}")
-c5.metric("Relevancy",        f"{avg_relev:.2f}")
-c6.metric("Completeness",     f"{avg_compl:.2f}")
-c7.metric("⚠ Inconsistent",  flagged_cnt, delta=None)
+st.markdown("#### Layer 1 & 2 — Grounded (Zero LLM)")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Factual Anchor Score", f"{avg_factual:.2f}" if avg_factual is not None else "N/A",
+          help="Pure code: facts in answer vs source context")
+c2.metric("Golden ROUGE-L",       f"{avg_golden_r:.2f}" if avg_golden_r is not None else "N/A",
+          help="Math: text overlap with golden reference answer")
+c3.metric("Contradicts Golden",   contradicts_cnt,
+          help="Runs where answer contradicts the ground truth")
+c4.metric("⚠ Inconsistent Qs",   flagged_cnt)
+
+st.markdown("#### Layer 3 — LLM Judge (Grounded by Golden Answer)")
+c5, c6, c7, c8, c9 = st.columns(5)
+c5.metric("Overall Score",  f"{avg_overall:.2f}")
+c6.metric("Faithfulness",   f"{avg_faith:.2f}")
+c7.metric("Relevancy",      f"{avg_relev:.2f}")
+c8.metric("Completeness",   f"{avg_compl:.2f}")
+c9.metric("Total Runs",     total_runs)
 
 st.divider()
 
@@ -154,11 +178,14 @@ st.divider()
 st.markdown("### 📈 Score Trend Across All Runs")
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(y=df["overall_score"],    name="Overall",       line=dict(color="#6366f1", width=3)))
-fig.add_trace(go.Scatter(y=df["faithfulness"],     name="Faithfulness",  line=dict(color="#22c55e", width=2)))
-fig.add_trace(go.Scatter(y=df["relevancy"],        name="Relevancy",     line=dict(color="#f59e0b", width=2)))
-fig.add_trace(go.Scatter(y=df["completeness"],     name="Completeness",  line=dict(color="#3b82f6", width=2)))
-fig.add_trace(go.Scatter(y=df["rouge_l"],          name="ROUGE-L",       line=dict(color="#ec4899", width=2, dash="dot")))
+fig.add_trace(go.Scatter(y=df["overall_score"],    name="Overall",             line=dict(color="#6366f1", width=3)))
+if "factual_anchor_score" in df.columns:
+    fig.add_trace(go.Scatter(y=df["factual_anchor_score"], name="Factual Anchors (L1)", line=dict(color="#dc2626", width=2)))
+if "golden_rouge_l" in df.columns:
+    fig.add_trace(go.Scatter(y=df["golden_rouge_l"],       name="Golden ROUGE-L (L2)", line=dict(color="#7c3aed", width=2)))
+fig.add_trace(go.Scatter(y=df["faithfulness"],     name="Faithfulness (L3)",   line=dict(color="#22c55e", width=2)))
+fig.add_trace(go.Scatter(y=df["relevancy"],        name="Relevancy (L3)",      line=dict(color="#f59e0b", width=2)))
+fig.add_trace(go.Scatter(y=df["completeness"],     name="Completeness (L3)",   line=dict(color="#3b82f6", width=2)))
 fig.add_hline(y=0.75, line_dash="dash", line_color="red", annotation_text="Threshold (0.75)")
 fig.update_layout(
     height=320,
@@ -227,30 +254,55 @@ for q in questions:
             cc2.metric("Contradiction Rate", f"{cons.get('contradiction_rate', 0)*100:.0f}%")
             cc3.metric("Drift", f"{cons.get('drift_score', 0):.2f}")
             cc4.metric("Total Runs", cons.get("total_runs", len(q_df)))
-            st.markdown("---")
+
+        golden = golden_map.get(q)
+        if golden:
+            with st.expander("📌 Golden Reference Answer (Ground Truth)", expanded=False):
+                st.success(golden)
+        st.markdown("---")
 
         for i, row in q_df.iterrows():
             run_label = f"**Run {i+1}**"
-            r1, r2, r3, r4, r5, r6 = st.columns([1, 4, 1, 1, 1, 1])
+            contradicts = bool(row.get("contradicts_golden", 0))
+            hallucinated = row.get("factual_hallucinated", "[]")
+            try:
+                hallucinated = json.loads(hallucinated) if isinstance(hallucinated, str) else hallucinated
+            except Exception:
+                hallucinated = []
+
+            r1, r2, r3, r4, r5, r6, r7, r8 = st.columns([1, 3, 1, 1, 1, 1, 1, 1])
 
             r1.markdown(run_label)
-            r2.caption(row.get("answer", "")[:200])
-            r3.markdown(score_badge(row.get("faithfulness")), help=row.get("faithfulness_reason", ""))
-            r4.markdown(score_badge(row.get("relevancy")),    help=row.get("relevancy_reason", ""))
-            r5.markdown(score_badge(row.get("completeness")), help=row.get("completeness_reason", ""))
+            answer_text = row.get("answer", "")[:180]
+            if contradicts:
+                r2.caption(f"⚠ {answer_text}")
+            else:
+                r2.caption(answer_text)
+            r3.markdown(score_badge(row.get("factual_anchor_score")), help=f"Hallucinated: {hallucinated[:2]}")
+            r4.markdown(score_badge(row.get("golden_rouge_l")),       help="ROUGE-L vs golden answer")
+            r5.markdown(score_badge(row.get("faithfulness")),         help=row.get("faithfulness_reason", ""))
+            r6.markdown(score_badge(row.get("relevancy")),            help=row.get("relevancy_reason", ""))
+            r7.markdown(score_badge(row.get("completeness")),         help=row.get("completeness_reason", ""))
 
             overall = row.get("overall_score")
             color = score_color(overall)
-            r6.markdown(
-                f'<div style="background:{"#22c55e" if color=="green" else "#f59e0b" if color=="orange" else "#ef4444"};'
-                f'color:white;padding:4px 8px;border-radius:6px;text-align:center;font-weight:700;">'
-                f'{overall:.2f if overall is not None else "N/A"}</div>',
+            bg = "#22c55e" if color == "green" else "#f59e0b" if color == "orange" else "#ef4444"
+            r8.markdown(
+                f'<div style="background:{bg};color:white;padding:4px 8px;'
+                f'border-radius:6px;text-align:center;font-weight:700;">'
+                f'{"N/A" if overall is None else f"{overall:.2f}"}</div>',
                 unsafe_allow_html=True,
             )
 
+            if contradicts:
+                st.error(f"Run {i+1} contradicts golden answer: {row.get('contradiction_detail', '')}")
+            if hallucinated:
+                st.warning(f"Run {i+1} hallucinated facts not in source: {hallucinated}")
+
         st.markdown(
-            "<div style='display:flex;gap:24px;margin-top:4px;font-size:12px;color:#64748b;'>"
-            "<span>Columns: Run | Answer | 🟢Faithfulness | 🟡Relevancy | 🔵Completeness | Overall</span>"
+            "<div style='font-size:12px;color:#64748b;margin-top:4px;'>"
+            "Columns: Run | Answer | 🔴Factual(L1) | 🟣GoldenROUGE(L2) | "
+            "🟢Faithfulness(L3) | 🟡Relevancy(L3) | 🔵Completeness(L3) | Overall"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -261,9 +313,16 @@ st.divider()
 
 st.markdown("### 🎯 Average Score Breakdown")
 
+radar_r     = [avg_faith, avg_relev, avg_compl,
+               avg_factual if avg_factual is not None else 0,
+               avg_golden_r if avg_golden_r is not None else 0,
+               avg_overall]
+radar_theta = ["Faithfulness (L3)", "Relevancy (L3)", "Completeness (L3)",
+               "Factual Anchors (L1)", "Golden ROUGE-L (L2)", "Overall"]
+
 fig2 = go.Figure(go.Scatterpolar(
-    r=[avg_faith, avg_relev, avg_compl, avg_rouge, avg_overall],
-    theta=["Faithfulness", "Relevancy", "Completeness", "ROUGE-L", "Overall"],
+    r=radar_r,
+    theta=radar_theta,
     fill="toself",
     line_color="#6366f1",
     fillcolor="rgba(99,102,241,0.2)",

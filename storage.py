@@ -37,8 +37,22 @@ def init_db():
             faithfulness_reason TEXT,
             relevancy_reason TEXT,
             completeness_reason TEXT,
+            factual_anchor_score REAL,
+            factual_supported TEXT,
+            factual_hallucinated TEXT,
+            golden_rouge_l REAL,
+            contradicts_golden INTEGER DEFAULT 0,
+            contradiction_detail TEXT,
             timestamp TEXT NOT NULL,
             FOREIGN KEY (run_id) REFERENCES test_runs(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS golden_answers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL UNIQUE,
+            golden_answer TEXT NOT NULL,
+            factual_anchors TEXT,
+            created_at TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS consistency_reports (
@@ -61,6 +75,23 @@ def init_db():
         );
     """)
     conn.commit()
+
+    # Migrate existing evaluations table — add new columns if missing
+    new_cols = [
+        ("factual_anchor_score",  "REAL"),
+        ("factual_supported",     "TEXT"),
+        ("factual_hallucinated",  "TEXT"),
+        ("golden_rouge_l",        "REAL"),
+        ("contradicts_golden",    "INTEGER DEFAULT 0"),
+        ("contradiction_detail",  "TEXT"),
+    ]
+    for col, col_type in new_cols:
+        try:
+            conn.execute(f"ALTER TABLE evaluations ADD COLUMN {col} {col_type}")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
+
     conn.close()
 
 
@@ -92,22 +123,50 @@ def save_evaluation(run_id: int, question: str, scores: dict):
     conn.execute(
         """INSERT INTO evaluations
            (run_id, question, faithfulness, relevancy, completeness, rouge_l, overall_score,
-            faithfulness_reason, relevancy_reason, completeness_reason, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            faithfulness_reason, relevancy_reason, completeness_reason,
+            factual_anchor_score, factual_supported, factual_hallucinated,
+            golden_rouge_l, contradicts_golden, contradiction_detail, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             run_id, question,
-            scores.get("faithfulness"), scores.get("relevancy"),
-            scores.get("completeness"), scores.get("rouge_l"),
+            scores.get("faithfulness"),   scores.get("relevancy"),
+            scores.get("completeness"),   scores.get("rouge_l"),
             scores.get("overall"),
             scores.get("faithfulness_reason", ""),
-            scores.get("relevancy_reason", ""),
+            scores.get("relevancy_reason",    ""),
             scores.get("completeness_reason", ""),
+            scores.get("factual_anchor_score"),
+            json.dumps(scores.get("factual_supported",    [])),
+            json.dumps(scores.get("factual_hallucinated", [])),
+            scores.get("golden_rouge_l"),
+            int(scores.get("contradicts_golden", False)),
+            scores.get("contradiction_detail", ""),
             datetime.utcnow().isoformat(),
         ),
     )
     conn.execute("UPDATE test_runs SET evaluated = 1 WHERE id = ?", (run_id,))
     conn.commit()
     conn.close()
+
+
+def save_golden_answer(question: str, golden_answer: str, factual_anchors: str):
+    conn = get_conn()
+    conn.execute(
+        """INSERT OR REPLACE INTO golden_answers (question, golden_answer, factual_anchors, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (question, golden_answer, factual_anchors, datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_golden_answer(question: str) -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT * FROM golden_answers WHERE question = ?", (question,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def save_consistency_report(question: str, data: dict):
