@@ -4,8 +4,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI
 from pydantic import BaseModel
-from rag_app.retriever import retrieve
-from rag_app.documents import POLICY_DOCUMENTS
+from rag_app.retriever import retrieve, reload
+from rag_app.document_store import get_all_documents, get_uploaded_documents
 import llm_client
 
 app = FastAPI(title="Employee Policy RAG App")
@@ -24,22 +24,50 @@ class QueryResponse(BaseModel):
 
 @app.get("/")
 def root():
+    docs = get_all_documents()
     return {
-        "app": "Employee Policy RAG System",
+        "app":         "Employee Policy RAG System",
         "description": "Answer questions about employee policies using RAG",
-        "topics": [doc["title"] for doc in POLICY_DOCUMENTS],
-        "endpoint": "POST /query"
+        "topics":      [doc["title"] for doc in docs],
+        "endpoint":    "POST /query",
     }
 
 
 @app.get("/topics")
 def get_topics():
+    docs = get_all_documents()
     return {
         "topics": [
             {"title": doc["title"], "summary": doc["content"].strip().split("\n")[0]}
-            for doc in POLICY_DOCUMENTS
+            for doc in docs
         ]
     }
+
+
+@app.get("/documents")
+def list_documents():
+    all_docs      = get_all_documents()
+    uploaded_docs = get_uploaded_documents()
+    uploaded_titles = {u["title"] for u in uploaded_docs}
+    return {
+        "total": len(all_docs),
+        "documents": [
+            {
+                "title":    doc["title"],
+                "type":     "uploaded" if doc["title"] in uploaded_titles else "default",
+                "preview":  doc["content"].strip()[:120] + "...",
+            }
+            for doc in all_docs
+        ],
+    }
+
+
+@app.post("/reload")
+def reload_index():
+    """Rebuild TF-IDF index after document changes."""
+    reload()
+    docs = get_all_documents()
+    return {"status": "ok", "documents_loaded": len(docs)}
 
 
 @app.post("/query", response_model=QueryResponse)
