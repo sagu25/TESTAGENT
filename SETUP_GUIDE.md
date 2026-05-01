@@ -31,55 +31,68 @@ pip install -r requirements.txt
 ```
 
 This installs:
-- `fastapi` + `uvicorn` — RAG app server
-- `openai` — Azure / Groq / Grok client
-- `apscheduler` — 2-minute trigger scheduler
-- `streamlit` — Live dashboard
-- `plotly` + `pandas` — Charts and data
-- `scikit-learn` — TF-IDF document search
-- `rouge-score` — ROUGE-L metric
-- `python-dotenv` — Environment config
+
+| Package | Purpose |
+|---|---|
+| `fastapi` + `uvicorn` | RAG app REST server |
+| `openai` | Azure OpenAI / Groq / Grok client |
+| `apscheduler` | Automated 2-minute trigger |
+| `streamlit` | Unified UI app |
+| `plotly` + `pandas` | Charts and data tables |
+| `scikit-learn` | TF-IDF document retrieval |
+| `rouge-score` | ROUGE-L mathematical metric |
+| `pypdf` | PDF document parsing |
+| `python-dotenv` | Environment config loader |
 
 ---
 
 ## Step 3 — Configure API Keys
 
-Copy the example config file:
+Copy the template:
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in your Azure OpenAI credentials:
+Open `.env` and fill in your **Azure OpenAI** credentials:
 
 ```env
-# Set provider to azure
 LLM_PROVIDER=azure
 
-# Your Azure OpenAI credentials
-AZURE_OPENAI_API_KEY=abc123...your_key_here
-AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
+AZURE_OPENAI_API_KEY=your_actual_key_here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
 AZURE_OPENAI_API_VERSION=2024-02-01
 ```
 
-### How to Find Your Azure Credentials
+### Where to Find Azure Credentials
 
 ```
 Azure Portal → Your OpenAI Resource → Keys and Endpoint
-  AZURE_OPENAI_API_KEY      = Key 1 or Key 2
-  AZURE_OPENAI_ENDPOINT     = Endpoint URL
+  AZURE_OPENAI_API_KEY          = Key 1 or Key 2
+  AZURE_OPENAI_ENDPOINT         = Endpoint URL
 
 Azure Portal → Your OpenAI Resource → Model Deployments
-  AZURE_OPENAI_DEPLOYMENT_NAME = Name of your deployed model
-                                 (e.g. gpt-4o, gpt-4-turbo)
+  AZURE_OPENAI_DEPLOYMENT_NAME  = Your deployed model name (e.g. gpt-4o)
 ```
+
+### Optional — Add Groq as Second Judge
+
+If you have a Groq API key (free at console.groq.com), adding it enables
+**multi-judge consensus** where Azure and Groq evaluate independently:
+
+```env
+GROQ_API_KEY=gsk_your_groq_key_here
+GROQ_MODEL=llama-3.1-8b-instant
+```
+
+> **Note:** The system works with Azure alone. Groq is optional but improves evaluation reliability.
 
 ---
 
-## Step 4 — Run the System (3 Terminals)
+## Step 4 — Run the System (2 Terminals)
 
-Open **3 separate terminal windows** in the `TESTAGENT` folder.
+Open **2 terminal windows** in the `TESTAGENT` folder.
 
 ### Terminal 1 — Start the RAG App
 
@@ -92,43 +105,12 @@ Expected output:
 INFO: Uvicorn running on http://0.0.0.0:8000
 ```
 
-Verify it works:
-```bash
-curl http://localhost:8000/
-```
+Verify it works by opening: **http://localhost:8000/docs**
 
-### Terminal 2 — Start the Orchestrator (Test + Evaluate Pipeline)
+### Terminal 2 — Start the Unified App
 
 ```bash
-python orchestrator.py
-```
-
-Expected output:
-```
-============================================================
-  RAG Evaluation System
-  Trigger interval: every 120 seconds
-  Provider: AZURE
-  RAG App: http://localhost:8000
-============================================================
-[Orchestrator] Running first pipeline immediately...
-[TestAgent] Analyzing RAG app to generate questions...
-[LLMClient] Provider: AZURE | Model: gpt-4o
-[TestAgent] Generated 15 questions from app analysis.
-[TestAgent] Firing question [1/15]: ...
-[GoldenGen] Generating golden answer for: ...
-[EvaluatorAgent] Evaluating run 1: ...
-  Layer 1 Factual: 0.95
-  Layer 2 Golden ROUGE-L: 0.62
-  Layer 3 LLM Judge: faith=0.90 relev=0.95 compl=0.80
-  [OK] Overall Score: 0.84
-[ReportGenerator] Report saved.
-```
-
-### Terminal 3 — Start the Dashboard
-
-```bash
-streamlit run dashboard.py
+streamlit run app.py
 ```
 
 Expected output:
@@ -139,72 +121,92 @@ Local URL: http://localhost:8501
 
 Open your browser at **http://localhost:8501**
 
+> The orchestrator (`orchestrator.py`) is now optional — you can trigger test cycles
+> directly from the **Start Testing** page inside the app.
+
 ---
 
-## Step 5 — Verify Everything is Working
+## Step 5 — Upload Your Policy Document
 
-After the first pipeline cycle completes (about 1-2 minutes), you should see:
+1. Open **http://localhost:8501**
+2. Go to **📄 Documents** page
+3. Click **Browse files** → select your PDF or TXT policy document
+4. Enter a title (e.g. "HR Policy 2024")
+5. Click **Add Document**
 
-```
-✓ http://localhost:8000        → RAG App running
-✓ http://localhost:8501        → Dashboard showing scores
-✓ eval_results.db              → Database created with data
-✓ reports/report.html          → HTML report generated
-```
+The system will:
+- Extract text from the PDF automatically
+- Reload the RAG app index
+- Clear old questions so new ones are generated from your document
+
+---
+
+## Step 6 — Run Your First Test
+
+1. Go to **🧪 Start Testing** page
+2. You will see 15 auto-generated questions based on your document
+3. Click **Run 1 Cycle** — fires one question, evaluates, saves result
+4. Click **Run 5 Cycles** — runs 5 questions in sequence with progress bar
+5. Go to **📊 Dashboard** to see scores, charts, and comparison tables
+
+---
+
+## Step 7 — View Results
+
+### Dashboard Page (📊)
+- Live score metrics — Overall, Faithfulness, Factual Anchors, Golden ROUGE-L
+- Score trend chart across all runs
+- Consistency alerts for questions with contradicting answers
+- Per-question expandable sections showing every run side by side
+- **Download Report** button — saves full HTML report to your machine
+
+### Human Review Page (👁)
+- Answers scoring below 0.60 are flagged here automatically
+- Submit verdict: Correct / Partially Correct / Incorrect
+- Edit the Golden Answer directly to update ground truth
+
+### Adversarial Questions Page (⚔)
+- Add your own test questions — edge cases, trick questions, out-of-scope
+- These are added to the test rotation alongside auto-generated questions
+
+### Regression Tracking Page (📈)
+- Save named snapshots: "v1.0-baseline", "after-doc-update"
+- Compare any two snapshots side by side with delta arrows
+- Detect score regressions after document or app changes
 
 ---
 
 ## Trigger Intervals
 
-The system fires every 120 seconds by default. To change:
+The orchestrator fires every 120 seconds by default. Change in `.env`:
 
 ```env
-# .env
 TRIGGER_INTERVAL_SECONDS=60    # every 1 minute (faster demo)
 TRIGGER_INTERVAL_SECONDS=120   # every 2 minutes (default)
-TRIGGER_INTERVAL_SECONDS=300   # every 5 minutes (production)
-```
-
----
-
-## Switching Between LLM Providers
-
-Change `LLM_PROVIDER` in `.env` and restart the orchestrator:
-
-```env
-LLM_PROVIDER=azure    # Azure OpenAI (recommended — no rate limits)
-LLM_PROVIDER=groq     # Groq (free tier — has rate limits)
-LLM_PROVIDER=grok     # xAI Grok
+TRIGGER_INTERVAL_SECONDS=300   # every 5 minutes (lighter load)
 ```
 
 ---
 
 ## Demonstrating a Wrong Answer (For Demos)
 
-This shows the evaluator catching errors in real time:
-
 **Step 1** — Open `rag_app/documents.py`
 
-**Step 2** — Find this line in the Annual Leave Policy section:
+**Step 2** — Find in Annual Leave Policy:
 ```python
 "All full-time employees are entitled to 15 days of paid annual leave"
 ```
 
-**Step 3** — Change `15` to `99`:
-```python
-"All full-time employees are entitled to 99 days of paid annual leave"
+**Step 3** — Change `15` to `99` and save
+
+**Step 4** — In the app, go to **🧪 Start Testing** → click **Run 1 Cycle**
+
+**Step 5** — Go to **📊 Dashboard** — you will see:
 ```
-
-**Step 4** — Save the file (RAG app auto-reloads)
-
-**Step 5** — Wait for the next pipeline cycle
-
-**What you will see on the dashboard:**
-```
-Layer 1 Factual Anchor Score: 0.10   ← "99" not in original context
-Layer 2 Golden ROUGE-L:       0.15   ← answer differs from golden
-Contradicts Golden:           YES    ← LLM judge flags it
-Overall Score:                0.22   ← RED — system caught the error
+Layer 1 Factual Anchor Score:  0.10  ← "99" not found in source context
+Layer 2 Golden ROUGE-L:        0.12  ← far from reference answer
+Contradicts Golden:            YES   ← multi-judge flagged it
+Overall Score:                 0.22  ← RED
 ```
 
 **Step 6** — Revert the change to restore correct answers
@@ -216,46 +218,109 @@ Overall Score:                0.22   ← RED — system caught the error
 ```
 TESTAGENT/
 ├── rag_app/
-│   ├── main.py              Start with: python start_rag_app.py
-│   ├── documents.py         Edit to inject wrong answers for demo
-│   └── retriever.py         TF-IDF search (do not modify)
+│   ├── main.py                 RAG API server (start_rag_app.py)
+│   ├── documents.py            Default policy docs (edit for demo)
+│   ├── retriever.py            TF-IDF search engine
+│   └── document_store.py       Dynamic doc management (upload/remove)
+│
 ├── agents/
-│   ├── test_agent.py        Fires questions every N seconds
-│   └── evaluator_agent.py   3-layer scoring engine
-├── dashboard.py             streamlit run dashboard.py
-├── orchestrator.py          python orchestrator.py
-├── llm_client.py            Edit to add new providers
-├── metrics.py               All scoring formulas
-├── factual_extractor.py     Layer 1: pure code fact checking
-├── golden_answer_generator.py  Layer 2: ground truth generation
-├── storage.py               SQLite database operations
-├── .env                     YOUR CREDENTIALS GO HERE
-├── .env.example             Template (safe to commit)
-├── requirements.txt         pip install -r requirements.txt
-└── reports/report.html      Open in browser for static report
+│   ├── test_agent.py           Auto-generates questions, fires them
+│   └── evaluator_agent.py      3-layer + multi-judge scoring engine
+│
+├── app.py                      ← MAIN APP (streamlit run app.py)
+├── orchestrator.py             Auto-scheduler (optional, runs every 2 min)
+├── multi_judge.py              Azure + Groq consensus evaluation
+├── llm_client.py               Provider switcher (Azure/Groq/Grok)
+├── metrics.py                  All scoring formulas
+├── factual_extractor.py        Layer 1: pure code fact checking
+├── golden_answer_generator.py  Layer 2: ground truth from full docs
+├── storage.py                  SQLite database (all tables)
+├── report_generator.py         HTML report builder
+├── start_rag_app.py            Starts RAG server on port 8000
+├── uploads/                    Uploaded documents stored here
+├── reports/report.html         Latest HTML report
+├── .env                        ← YOUR CREDENTIALS (never commit this)
+├── .env.example                Template (safe to share)
+└── requirements.txt            pip install -r requirements.txt
 ```
 
 ---
 
-## Common Issues
+## Common Issues and Fixes
 
-| Problem | Cause | Fix |
+| Error | Cause | Fix |
 |---|---|---|
-| `Authentication failed` | Wrong Azure key | Check AZURE_OPENAI_API_KEY in .env |
-| `Could not reach RAG app` | start_rag_app.py not running | Start Terminal 1 first |
-| `No data in dashboard` | Orchestrator not run yet | Wait for first cycle to complete |
-| `Port 8000 already in use` | Another process using port | Kill it or change port in start_rag_app.py |
-| `Port 8501 already in use` | Another Streamlit running | `streamlit run dashboard.py --server.port 8502` |
-| `Module not found` | Dependencies missing | `pip install -r requirements.txt` |
+| `Missing credentials` | Azure keys not set in .env | Fill in `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_ENDPOINT` |
+| `Authentication failed` | Wrong Azure key or endpoint | Copy fresh key from Azure Portal → Keys and Endpoint |
+| `RAG App: Offline` (red in sidebar) | `start_rag_app.py` not running | Open Terminal 1 and run `python start_rag_app.py` |
+| `No data in dashboard` | No test cycles run yet | Go to Start Testing → Run 1 Cycle |
+| `Port 8000 already in use` | Another process on port 8000 | Kill it or change port in `start_rag_app.py` |
+| `Port 8501 already in use` | Another Streamlit running | `streamlit run app.py --server.port 8502` |
+| `Module not found` | Dependencies not installed | `pip install -r requirements.txt` |
+| `DeprecationWarning: utcnow` | Python 3.12 warning | Already fixed in latest code — pull latest from git |
+| `Rate limit exceeded` (Groq) | Groq free tier limit hit | Switch to Azure: set `LLM_PROVIDER=azure` in .env |
+| `PDF not reading correctly` | Scanned/image PDF | Convert to text-based PDF or copy text to a .txt file |
+
+---
+
+## Switching Between LLM Providers
+
+Change `LLM_PROVIDER` in `.env` and restart both terminals:
+
+```env
+LLM_PROVIDER=azure    # Recommended — enterprise, no rate limits
+LLM_PROVIDER=groq     # Free tier — 30 RPM limit, slower evaluation
+LLM_PROVIDER=grok     # xAI Grok models
+```
+
+---
+
+## Multi-Judge Setup (Recommended)
+
+For maximum evaluation reliability, configure both Azure AND Groq.
+The system will use both as independent judges and flag disagreements:
+
+```env
+LLM_PROVIDER=azure
+
+# Primary judge
+AZURE_OPENAI_API_KEY=your_azure_key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
+AZURE_OPENAI_API_VERSION=2024-02-01
+
+# Secondary judge (optional but recommended)
+GROQ_API_KEY=gsk_your_groq_key
+GROQ_MODEL=llama-3.1-8b-instant
+```
+
+When both are configured:
+```
+[Multi-Judge (2 models)]: faith=0.90 relev=0.95 compl=0.85
+vs
+[Single Judge]: faith=0.90 relev=0.95 compl=0.85
+
+If judges disagree: [DISPUTED] disagreement=0.35 → flag for human review
+```
 
 ---
 
 ## Resetting the System (Fresh Start)
 
 ```bash
-# Delete the database to start fresh
+# Windows
 del eval_results.db
 
-# The system will regenerate questions and golden answers on next run
-python orchestrator.py
+# Mac/Linux
+rm eval_results.db
+
+# System will regenerate questions and golden answers on next run
+streamlit run app.py
+```
+
+To also clear uploaded documents:
+```bash
+# Windows
+del uploads\*.txt
+del uploads\meta.json
 ```
