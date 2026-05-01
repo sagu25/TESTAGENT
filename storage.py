@@ -1,7 +1,10 @@
-import sqlite3
+﻿import sqlite3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "eval_results.db")
 
@@ -113,7 +116,7 @@ def init_db():
     """)
     conn.commit()
 
-    # Migrate existing evaluations table — add new columns if missing
+    # Migrate existing evaluations table â€” add new columns if missing
     new_cols = [
         ("factual_anchor_score",  "REAL"),
         ("factual_supported",     "TEXT"),
@@ -138,7 +141,7 @@ def save_test_run(question: str, answer: str, retrieved_context: list, sources: 
         """INSERT INTO test_runs (question, answer, retrieved_context, sources, timestamp)
            VALUES (?, ?, ?, ?, ?)""",
         (question, answer, json.dumps(retrieved_context), json.dumps(sources),
-         datetime.utcnow().isoformat()),
+         _now()),
     )
     run_id = cursor.lastrowid
     conn.commit()
@@ -178,7 +181,7 @@ def save_evaluation(run_id: int, question: str, scores: dict):
             scores.get("golden_rouge_l"),
             int(scores.get("contradicts_golden", False)),
             scores.get("contradiction_detail", ""),
-            datetime.utcnow().isoformat(),
+            _now(),
         ),
     )
     conn.execute("UPDATE test_runs SET evaluated = 1 WHERE id = ?", (run_id,))
@@ -191,7 +194,7 @@ def save_golden_answer(question: str, golden_answer: str, factual_anchors: str):
     conn.execute(
         """INSERT OR REPLACE INTO golden_answers (question, golden_answer, factual_anchors, created_at)
            VALUES (?, ?, ?, ?)""",
-        (question, golden_answer, factual_anchors, datetime.utcnow().isoformat()),
+        (question, golden_answer, factual_anchors, _now()),
     )
     conn.commit()
     conn.close()
@@ -218,7 +221,7 @@ def save_consistency_report(question: str, data: dict):
                WHERE question=?""",
             (data["consistency_score"], data["contradiction_rate"], data["drift_score"],
              data["total_runs"], data["flagged"], json.dumps(data.get("contradiction_details", [])),
-             datetime.utcnow().isoformat(), question),
+             _now(), question),
         )
     else:
         conn.execute(
@@ -229,7 +232,7 @@ def save_consistency_report(question: str, data: dict):
             (question, data["consistency_score"], data["contradiction_rate"],
              data["drift_score"], data["total_runs"], data["flagged"],
              json.dumps(data.get("contradiction_details", [])),
-             datetime.utcnow().isoformat()),
+             _now()),
         )
     conn.commit()
     conn.close()
@@ -274,7 +277,7 @@ def save_generated_questions(questions: list[dict]):
     for q in questions:
         conn.execute(
             "INSERT INTO generated_questions (question, category, created_at) VALUES (?, ?, ?)",
-            (q["question"], q.get("category", "general"), datetime.utcnow().isoformat()),
+            (q["question"], q.get("category", "general"), _now()),
         )
     conn.commit()
     conn.close()
@@ -294,7 +297,7 @@ def get_next_question_index(total: int) -> int:
     return count % total
 
 
-# ── Human Review ──────────────────────────────────────────────────────────────
+# â”€â”€ Human Review â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_runs_pending_review(score_threshold: float = 0.60) -> list[dict]:
     """Return evaluated runs below threshold that have no human review yet."""
@@ -321,7 +324,7 @@ def save_human_review(run_id: int, question: str, answer: str,
            (run_id, question, answer, verdict, human_score, notes, reviewed_by, reviewed_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (run_id, question, answer, verdict, human_score, notes, reviewed_by,
-         datetime.utcnow().isoformat()),
+         _now()),
     )
     conn.commit()
     conn.close()
@@ -345,7 +348,7 @@ def update_golden_answer(question: str, verified_answer: str):
     conn.close()
 
 
-# ── Manual Questions ──────────────────────────────────────────────────────────
+# â”€â”€ Manual Questions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def save_manual_question(question: str, category: str,
                          question_type: str, expected_answer: str = ""):
@@ -354,7 +357,7 @@ def save_manual_question(question: str, category: str,
         """INSERT OR IGNORE INTO manual_questions
            (question, category, question_type, expected_answer, created_at)
            VALUES (?, ?, ?, ?, ?)""",
-        (question, category, question_type, expected_answer, datetime.utcnow().isoformat()),
+        (question, category, question_type, expected_answer, _now()),
     )
     conn.commit()
     conn.close()
@@ -374,7 +377,7 @@ def delete_manual_question(question_id: int):
     conn.close()
 
 
-# ── Snapshots / Regression Tracking ──────────────────────────────────────────
+# â”€â”€ Snapshots / Regression Tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def take_snapshot(name: str) -> dict:
     """Save current evaluation scores as a named snapshot."""
@@ -405,7 +408,7 @@ def take_snapshot(name: str) -> dict:
         "avg_golden_rouge":   avg("golden_rouge_l"),
         "flagged_questions":  flagged,
         "contradiction_count": contradicts,
-        "created_at":         datetime.utcnow().isoformat(),
+        "created_at":         _now(),
     }
 
     conn.execute(
@@ -426,3 +429,4 @@ def get_snapshots() -> list[dict]:
     rows = conn.execute("SELECT * FROM snapshots ORDER BY created_at DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
