@@ -68,13 +68,22 @@ Respond ONLY with valid JSON array:
 
 def get_or_generate_questions() -> list[dict]:
     existing = storage.get_generated_questions()
-    if existing:
-        print(f"[TestAgent] Using {len(existing)} previously generated questions.")
-        return existing
+    if not existing:
+        existing = analyze_app_and_generate_questions()
+        storage.save_generated_questions(existing)
 
-    questions = analyze_app_and_generate_questions()
-    storage.save_generated_questions(questions)
-    return questions
+    # Merge with manually added questions
+    manual = storage.get_manual_questions()
+    manual_formatted = [
+        {"question": m["question"], "category": m.get("question_type", "manual")}
+        for m in manual
+    ]
+
+    all_questions = existing + manual_formatted
+    auto_count   = len(existing)
+    manual_count = len(manual_formatted)
+    print(f"[TestAgent] Questions: {auto_count} auto-generated + {manual_count} manual = {len(all_questions)} total")
+    return all_questions
 
 
 def fire_question(question: str) -> dict | None:

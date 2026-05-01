@@ -129,7 +129,8 @@ with st.sidebar:
 
     page = st.radio(
         "Navigate",
-        ["📄 Documents", "💬 Chat", "🧪 Start Testing", "📊 Dashboard"],
+        ["📄 Documents", "💬 Chat", "🧪 Start Testing", "📊 Dashboard",
+         "👁 Human Review", "⚔ Adversarial Questions", "📈 Regression"],
         label_visibility="collapsed",
     )
 
@@ -593,3 +594,265 @@ elif page == "📊 Dashboard":
         st.dataframe(df[available], use_container_width=True, hide_index=True)
 
     st.caption("Built with Streamlit + Azure OpenAI | 3-Layer Grounded Evaluation")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 5 — HUMAN REVIEW
+# ═══════════════════════════════════════════════════════════════════════════════
+
+elif page == "👁 Human Review":
+    st.markdown("## 👁 Human Review")
+    st.caption("Low-scoring answers (below 0.60) flagged here for manual review. "
+               "Human verdicts override automated scores and improve golden answers.")
+    st.divider()
+
+    import storage as _st
+    _st.init_db()
+
+    threshold = st.slider("Flag answers below this score", 0.30, 0.80, 0.60, 0.05)
+    pending   = _st.get_runs_pending_review(threshold)
+
+    if not pending:
+        st.success(f"No answers below {threshold:.2f} awaiting review.")
+    else:
+        st.warning(f"{len(pending)} answer(s) need human review.")
+
+    for run in pending:
+        run_id   = run["id"]
+        question = run["question"]
+        answer   = run["answer"]
+        score    = run.get("overall_score", 0)
+
+        with st.expander(
+            f"[Score: {score:.2f}] {question[:70]}...",
+            expanded=True,
+        ):
+            st.markdown(f"**Question:** {question}")
+            st.markdown(f"**App Answer:** {answer}")
+
+            gold_map2 = load_golden_answers()
+            golden = gold_map2.get(question, "")
+            if golden:
+                st.info(f"**Golden Answer:** {golden}")
+
+            c1, c2 = st.columns(2)
+            with c1:
+                verdict = st.selectbox(
+                    "Verdict",
+                    ["Correct", "Partially Correct", "Incorrect"],
+                    key=f"v_{run_id}",
+                )
+                human_score = {"Correct": 1.0, "Partially Correct": 0.5, "Incorrect": 0.0}[verdict]
+                reviewer = st.text_input("Your name", value="Reviewer", key=f"rev_{run_id}")
+
+            with c2:
+                notes = st.text_area("Notes / Reason", key=f"n_{run_id}",
+                                     placeholder="Why is this correct/incorrect?")
+                new_golden = st.text_area(
+                    "Edit Golden Answer (optional — updates ground truth)",
+                    value=golden, key=f"g_{run_id}", height=100,
+                )
+
+            if st.button(f"Submit Review for Run {run_id}", key=f"sub_{run_id}",
+                         type="primary"):
+                _st.save_human_review(run_id, question, answer,
+                                      verdict, human_score, notes, reviewer)
+                if new_golden and new_golden != golden:
+                    _st.update_golden_answer(question, new_golden)
+                    st.success("Review saved + Golden answer updated.")
+                else:
+                    st.success("Review saved.")
+                st.rerun()
+
+    st.divider()
+    st.markdown("### Completed Reviews")
+    reviews = _st.get_all_human_reviews()
+    if reviews:
+        rev_df = pd.DataFrame(reviews)[
+            ["question", "verdict", "human_score", "notes", "reviewed_by", "reviewed_at"]
+        ]
+        rev_df["question"] = rev_df["question"].str[:60] + "..."
+        st.dataframe(rev_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No completed reviews yet.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 6 — ADVERSARIAL QUESTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+elif page == "⚔ Adversarial Questions":
+    st.markdown("## ⚔ Adversarial & Manual Questions")
+    st.caption("Add your own test questions — edge cases, trick questions, out-of-scope queries. "
+               "These are added to the test rotation alongside auto-generated questions.")
+    st.divider()
+
+    import storage as _st2
+    _st2.init_db()
+
+    st.markdown("### Add a Question")
+    q_col1, q_col2 = st.columns([3, 1])
+    with q_col1:
+        new_q = st.text_area("Question", height=80,
+                             placeholder="e.g. Can an employee take 200 days of leave?")
+    with q_col2:
+        q_type = st.selectbox("Type", [
+            "adversarial",
+            "edge case",
+            "out of scope",
+            "factual",
+            "trick",
+        ])
+        q_cat = st.text_input("Category", value="manual")
+        expected = st.text_input("Expected answer hint (optional)")
+
+    if st.button("Add Question", type="primary", use_container_width=True):
+        if new_q.strip():
+            _st2.save_manual_question(new_q.strip(), q_cat, q_type, expected)
+            st.success("Question added to test rotation.")
+            st.rerun()
+        else:
+            st.warning("Please enter a question.")
+
+    st.divider()
+    st.markdown("### Question Bank")
+
+    auto_qs   = _st2.get_generated_questions()
+    manual_qs = _st2.get_manual_questions()
+
+    tab1, tab2 = st.tabs([f"Auto-Generated ({len(auto_qs)})", f"Manual ({len(manual_qs)})"])
+
+    with tab1:
+        for q in auto_qs:
+            cat = q.get("category", "general")
+            st.markdown(f"- `[{cat}]` {q['question']}")
+
+    with tab2:
+        if not manual_qs:
+            st.info("No manual questions added yet.")
+        for q in manual_qs:
+            c1, c2 = st.columns([5, 1])
+            c1.markdown(
+                f"- `[{q['question_type']}]` {q['question']}"
+                + (f"\n  *Expected: {q['expected_answer']}*" if q.get("expected_answer") else "")
+            )
+            if c2.button("Remove", key=f"rm_{q['id']}"):
+                _st2.delete_manual_question(q["id"])
+                st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 7 — REGRESSION TRACKING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+elif page == "📈 Regression":
+    st.markdown("## 📈 Regression Tracking")
+    st.caption("Take named snapshots of current scores. Compare any two snapshots to detect regressions.")
+    st.divider()
+
+    import storage as _st3
+    _st3.init_db()
+
+    # Take snapshot
+    st.markdown("### Take Snapshot")
+    snap_name = st.text_input("Snapshot name",
+                               placeholder="e.g. v1.0-baseline, after-doc-update, post-fix")
+    if st.button("📸 Save Snapshot", type="primary"):
+        if snap_name.strip():
+            snap = _st3.take_snapshot(snap_name.strip())
+            st.success(
+                f"Snapshot '{snap_name}' saved — "
+                f"Overall: {snap['avg_overall']:.2f} | "
+                f"Faithfulness: {snap['avg_faithfulness']:.2f} | "
+                f"Runs: {snap['total_runs']}"
+            )
+            st.rerun()
+        else:
+            st.warning("Enter a snapshot name.")
+
+    st.divider()
+
+    snapshots = _st3.get_snapshots()
+    if not snapshots:
+        st.info("No snapshots yet. Run some test cycles then save a snapshot.")
+        st.stop()
+
+    snap_df = pd.DataFrame(snapshots)
+
+    # Comparison
+    st.markdown("### Compare Two Snapshots")
+    snap_names = [s["name"] for s in snapshots]
+
+    if len(snapshots) >= 2:
+        cmp1, cmp2 = st.columns(2)
+        with cmp1:
+            base_name = st.selectbox("Baseline", snap_names, index=len(snap_names)-2)
+        with cmp2:
+            curr_name = st.selectbox("Current",  snap_names, index=len(snap_names)-1)
+
+        base = next(s for s in snapshots if s["name"] == base_name)
+        curr = next(s for s in snapshots if s["name"] == curr_name)
+
+        metrics_to_compare = [
+            ("Overall Score",      "avg_overall"),
+            ("Faithfulness",       "avg_faithfulness"),
+            ("Relevancy",          "avg_relevancy"),
+            ("Completeness",       "avg_completeness"),
+            ("Factual Anchors",    "avg_factual"),
+            ("Golden ROUGE-L",     "avg_golden_rouge"),
+        ]
+
+        st.markdown(f"#### {base_name}  →  {curr_name}")
+        cols = st.columns(len(metrics_to_compare))
+        for col, (label, key) in zip(cols, metrics_to_compare):
+            b_val = base.get(key) or 0
+            c_val = curr.get(key) or 0
+            delta = round(c_val - b_val, 3)
+            col.metric(label, f"{c_val:.2f}", delta=f"{delta:+.3f}",
+                       delta_color="normal")
+
+        st.markdown("---")
+        flag_delta = (curr.get("flagged_questions", 0) or 0) - (base.get("flagged_questions", 0) or 0)
+        cont_delta = (curr.get("contradiction_count", 0) or 0) - (base.get("contradiction_count", 0) or 0)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Runs (base)",    base.get("total_runs", 0))
+        c2.metric("Total Runs (current)", curr.get("total_runs", 0))
+        c3.metric("Inconsistent Qs", curr.get("flagged_questions", 0),
+                  delta=f"{flag_delta:+d}", delta_color="inverse")
+        c4.metric("Contradictions",  curr.get("contradiction_count", 0),
+                  delta=f"{cont_delta:+d}", delta_color="inverse")
+    else:
+        st.info("Need at least 2 snapshots to compare. Run more cycles and save another snapshot.")
+
+    st.divider()
+
+    # Snapshot history chart
+    st.markdown("### Score History Across Snapshots")
+    if len(snap_df) > 1:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=snap_df["name"], y=snap_df["avg_overall"],
+                                 name="Overall", line=dict(color="#6366f1", width=3), mode="lines+markers"))
+        fig.add_trace(go.Scatter(x=snap_df["name"], y=snap_df["avg_faithfulness"],
+                                 name="Faithfulness", line=dict(color="#22c55e", width=2), mode="lines+markers"))
+        fig.add_trace(go.Scatter(x=snap_df["name"], y=snap_df["avg_factual"],
+                                 name="Factual Anchors", line=dict(color="#dc2626", width=2), mode="lines+markers"))
+        fig.add_hline(y=0.75, line_dash="dash", line_color="red", annotation_text="Threshold 0.75")
+        fig.update_layout(
+            height=320, margin=dict(l=0, r=0, t=10, b=0),
+            xaxis_title="Snapshot", yaxis=dict(range=[0, 1.05]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # All snapshots table
+    st.markdown("### All Snapshots")
+    display_cols = ["name", "total_runs", "avg_overall", "avg_faithfulness",
+                    "avg_factual", "flagged_questions", "created_at"]
+    avail = [c for c in display_cols if c in snap_df.columns]
+    st.dataframe(snap_df[avail].rename(columns={
+        "name": "Snapshot", "total_runs": "Runs",
+        "avg_overall": "Overall", "avg_faithfulness": "Faithfulness",
+        "avg_factual": "Factual", "flagged_questions": "Flagged",
+        "created_at": "Saved At",
+    }), use_container_width=True, hide_index=True)

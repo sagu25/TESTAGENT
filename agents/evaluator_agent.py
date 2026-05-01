@@ -8,6 +8,7 @@ import storage
 import metrics
 import report_generator
 import golden_answer_generator
+import multi_judge as mj
 
 
 def run():
@@ -58,23 +59,28 @@ def _evaluate_run(run: dict):
 
     time.sleep(3)  # breathe between LLM calls to stay under rate limit
 
-    # ── LAYER 3: Grounded LLM Judge ───────────────────────────────────────────
+    # ── LAYER 3: Multi-Judge Consensus ────────────────────────────────────────
+    available_judges = len(mj._get_all_clients())
+    judge_label = f"Multi-Judge ({available_judges} models)" if available_judges > 1 else "Single Judge"
+
     if golden_answer:
-        faith = metrics.evaluate_faithfulness_grounded(question, answer, context_text, golden_answer)
-        relev = metrics.evaluate_relevancy_grounded(question, answer, golden_answer)
-        compl = metrics.evaluate_completeness_grounded(question, answer, golden_answer)
+        faith = mj.multi_judge_faithfulness(question, answer, context_text, golden_answer)
+        relev = mj.multi_judge_relevancy(question, answer, golden_answer)
+        compl = mj.multi_judge_completeness(question, answer, golden_answer)
     else:
-        # Fallback to ungrounded judge if golden not available
         from metrics import evaluate_faithfulness, evaluate_relevancy, evaluate_completeness
         faith = evaluate_faithfulness(question, answer, context_text)
-        faith["contradicts_golden"] = False
+        faith["contradicts_golden"]   = False
         faith["contradiction_detail"] = ""
+        faith["disputed"]             = False
         relev = evaluate_relevancy(question, answer)
         compl = evaluate_completeness(question, answer, context_text)
 
-    print(f"  Layer 3 LLM Judge: faith={faith['score']:.2f} "
+    print(f"  Layer 3 [{judge_label}]: faith={faith['score']:.2f} "
           f"relev={relev['score']:.2f} compl={compl['score']:.2f}")
 
+    if faith.get("disputed"):
+        print(f"  [DISPUTED] Judges disagree on faithfulness by {faith.get('disagreement', 0):.2f}")
     if faith.get("contradicts_golden"):
         print(f"  [CONTRADICTION] CONTRADICTS GOLDEN ANSWER: {faith.get('contradiction_detail', '')}")
 

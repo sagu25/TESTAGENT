@@ -67,6 +67,43 @@ def init_db():
             timestamp TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS human_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            verdict TEXT,
+            human_score REAL,
+            notes TEXT,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            FOREIGN KEY (run_id) REFERENCES test_runs(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS manual_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL UNIQUE,
+            category TEXT DEFAULT 'manual',
+            question_type TEXT DEFAULT 'standard',
+            expected_answer TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            total_runs INTEGER,
+            avg_overall REAL,
+            avg_faithfulness REAL,
+            avg_relevancy REAL,
+            avg_completeness REAL,
+            avg_factual REAL,
+            avg_golden_rouge REAL,
+            flagged_questions INTEGER,
+            contradiction_count INTEGER,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS generated_questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             question TEXT NOT NULL,
@@ -255,3 +292,137 @@ def get_next_question_index(total: int) -> int:
     count = conn.execute("SELECT COUNT(*) FROM test_runs").fetchone()[0]
     conn.close()
     return count % total
+
+
+# ── Human Review ──────────────────────────────────────────────────────────────
+
+def get_runs_pending_review(score_threshold: float = 0.60) -> list[dict]:
+    """Return evaluated runs below threshold that have no human review yet."""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT tr.id, tr.question, tr.answer, tr.timestamp,
+                  e.overall_score, e.faithfulness, e.factual_anchor_score
+           FROM test_runs tr
+           JOIN evaluations e ON tr.id = e.run_id
+           WHERE e.overall_score < ?
+             AND tr.id NOT IN (SELECT run_id FROM human_reviews)
+           ORDER BY e.overall_score ASC""",
+        (score_threshold,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def save_human_review(run_id: int, question: str, answer: str,
+                      verdict: str, human_score: float, notes: str, reviewed_by: str):
+    conn = get_conn()
+    conn.execute(
+        """INSERT OR REPLACE INTO human_reviews
+           (run_id, question, answer, verdict, human_score, notes, reviewed_by, reviewed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (run_id, question, answer, verdict, human_score, notes, reviewed_by,
+         datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_human_reviews() -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM human_reviews ORDER BY reviewed_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_golden_answer(question: str, verified_answer: str):
+    """Replace auto-generated golden with human-verified version."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE golden_answers SET golden_answer = ? WHERE question = ?",
+        (verified_answer, question),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ── Manual Questions ──────────────────────────────────────────────────────────
+
+def save_manual_question(question: str, category: str,
+                         question_type: str, expected_answer: str = ""):
+    conn = get_conn()
+    conn.execute(
+        """INSERT OR IGNORE INTO manual_questions
+           (question, category, question_type, expected_answer, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (question, category, question_type, expected_answer, datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_manual_questions() -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM manual_questions ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_manual_question(question_id: int):
+    conn = get_conn()
+    conn.execute("DELETE FROM manual_questions WHERE id = ?", (question_id,))
+    conn.commit()
+    conn.close()
+
+
+# ── Snapshots / Regression Tracking ──────────────────────────────────────────
+
+def take_snapshot(name: str) -> dict:
+    """Save current evaluation scores as a named snapshot."""
+    conn = get_conn()
+
+    def avg(col):
+        row = conn.execute(
+            f"SELECT AVG({col}) FROM evaluations WHERE {col} IS NOT NULL"
+        ).fetchone()[0]
+        return round(row, 4) if row else 0.0
+
+    total_runs   = conn.execute("SELECT COUNT(*) FROM evaluations").fetchone()[0]
+    flagged      = conn.execute(
+        "SELECT COUNT(*) FROM consistency_reports WHERE flagged = 1"
+    ).fetchone()[0]
+    contradicts  = conn.execute(
+        "SELECT COUNT(*) FROM evaluations WHERE contradicts_golden = 1"
+    ).fetchone()[0]
+
+    snap = {
+        "name":               name,
+        "total_runs":         total_runs,
+        "avg_overall":        avg("overall_score"),
+        "avg_faithfulness":   avg("faithfulness"),
+        "avg_relevancy":      avg("relevancy"),
+        "avg_completeness":   avg("completeness"),
+        "avg_factual":        avg("factual_anchor_score"),
+        "avg_golden_rouge":   avg("golden_rouge_l"),
+        "flagged_questions":  flagged,
+        "contradiction_count": contradicts,
+        "created_at":         datetime.utcnow().isoformat(),
+    }
+
+    conn.execute(
+        """INSERT INTO snapshots
+           (name, total_runs, avg_overall, avg_faithfulness, avg_relevancy,
+            avg_completeness, avg_factual, avg_golden_rouge,
+            flagged_questions, contradiction_count, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        tuple(snap.values()),
+    )
+    conn.commit()
+    conn.close()
+    return snap
+
+
+def get_snapshots() -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM snapshots ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
