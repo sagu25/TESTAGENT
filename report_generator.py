@@ -42,10 +42,12 @@ def generate():
     )
 
     overall_avg = avg("overall_score")
-    faith_avg = avg("faithfulness")
-    relev_avg = avg("relevancy")
-    compl_avg = avg("completeness")
-    rouge_avg = avg("rouge_l")
+    faith_avg   = avg("faithfulness")
+    relev_avg   = avg("relevancy")
+    compl_avg   = avg("completeness")
+    rouge_avg   = avg("rouge_l")
+    factual_avg = avg("factual_anchor_score") if any(e.get("factual_anchor_score") is not None for e in evaluations) else None
+    golden_avg  = avg("golden_rouge_l") if any(e.get("golden_rouge_l") is not None for e in evaluations) else None
 
     flagged_questions = [c for c in consistency_reports if c["flagged"]]
     total_runs = len(evaluations)
@@ -71,26 +73,34 @@ def generate():
 
         run_rows = ""
         for i, run in enumerate(runs):
-            o = run.get("overall_score")
-            f = run.get("faithfulness")
-            r = run.get("relevancy")
-            c = run.get("completeness")
-            rl = run.get("rouge_l")
+            o   = run.get("overall_score")
+            f   = run.get("faithfulness")
+            r   = run.get("relevancy")
+            c   = run.get("completeness")
+            rl  = run.get("rouge_l")
+            fa  = run.get("factual_anchor_score")
+            gr  = run.get("golden_rouge_l")
+            cg  = bool(run.get("contradicts_golden", 0))
             run_time = run.get("run_time", run.get("timestamp", ""))[:19]
             answer_preview = (run.get("answer") or "")[:200]
             if len(run.get("answer") or "") > 200:
                 answer_preview += "..."
 
-            fs = f"{f:.2f}" if f is not None else "N/A"
-            rs = f"{r:.2f}" if r is not None else "N/A"
-            cs = f"{c:.2f}" if c is not None else "N/A"
+            fs  = f"{f:.2f}"  if f  is not None else "N/A"
+            rs  = f"{r:.2f}"  if r  is not None else "N/A"
+            cs  = f"{c:.2f}"  if c  is not None else "N/A"
             rls = f"{rl:.2f}" if rl is not None else "N/A"
-            os_ = f"{o:.2f}" if o is not None else "N/A"
+            fas = f"{fa:.2f}" if fa is not None else "N/A"
+            grs = f"{gr:.2f}" if gr is not None else "N/A"
+            os_ = f"{o:.2f}"  if o  is not None else "N/A"
+            contradiction_badge = '<span style="color:#ef4444;font-weight:700;"> CONTRADICTS</span>' if cg else ""
 
             run_rows += f"""
-            <tr>
-              <td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;">Run {i+1}<br><small style="color:#64748b;font-weight:400;">{run_time}</small></td>
+            <tr style="{'background:#fff5f5;' if cg else ''}">
+              <td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;">Run {i+1}<br><small style="color:#64748b;font-weight:400;">{run_time}</small>{contradiction_badge}</td>
               <td style="padding:8px;border:1px solid #e2e8f0;font-size:13px;">{answer_preview}</td>
+              <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;color:{_score_color(fa)};font-weight:700;">{fas}</td>
+              <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;color:{_score_color(gr)};font-weight:700;">{grs}</td>
               <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;color:{_score_color(f)};font-weight:700;">{fs}</td>
               <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;color:{_score_color(r)};font-weight:700;">{rs}</td>
               <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;color:{_score_color(c)};font-weight:700;">{cs}</td>
@@ -126,9 +136,11 @@ def generate():
                 <tr style="background:#f1f5f9;">
                   <th style="padding:10px;border:1px solid #e2e8f0;text-align:left;">Run</th>
                   <th style="padding:10px;border:1px solid #e2e8f0;text-align:left;">Answer</th>
-                  <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">Faith.</th>
-                  <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">Relev.</th>
-                  <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">Compl.</th>
+                  <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">Factual(L1)</th>
+                  <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">GoldenROUGE(L2)</th>
+                  <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">Faith.(L3)</th>
+                  <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">Relev.(L3)</th>
+                  <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">Compl.(L3)</th>
                   <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">ROUGE-L</th>
                   <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">Overall</th>
                 </tr>
@@ -175,20 +187,24 @@ def generate():
       <div class="stat-label">Overall Score</div>
     </div>
     <div class="stat-card">
+      <div class="stat-value" style="color:{_score_color(factual_avg) if factual_avg is not None else '#999'};">{f'{factual_avg:.2f}' if factual_avg is not None else 'N/A'}</div>
+      <div class="stat-label">Factual Anchors (L1)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:{_score_color(golden_avg) if golden_avg is not None else '#999'};">{f'{golden_avg:.2f}' if golden_avg is not None else 'N/A'}</div>
+      <div class="stat-label">Golden ROUGE-L (L2)</div>
+    </div>
+    <div class="stat-card">
       <div class="stat-value" style="color:{_score_color(faith_avg)};">{faith_avg:.2f}</div>
-      <div class="stat-label">Faithfulness</div>
+      <div class="stat-label">Faithfulness (L3)</div>
     </div>
     <div class="stat-card">
       <div class="stat-value" style="color:{_score_color(relev_avg)};">{relev_avg:.2f}</div>
-      <div class="stat-label">Relevancy</div>
+      <div class="stat-label">Relevancy (L3)</div>
     </div>
     <div class="stat-card">
       <div class="stat-value" style="color:{_score_color(compl_avg)};">{compl_avg:.2f}</div>
-      <div class="stat-label">Completeness</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value" style="color:{_score_color(rouge_avg)};">{rouge_avg:.2f}</div>
-      <div class="stat-label">ROUGE-L</div>
+      <div class="stat-label">Completeness (L3)</div>
     </div>
     <div class="stat-card">
       <div class="stat-value" style="color:{'#ef4444' if flagged_questions else '#22c55e'};">{len(flagged_questions)}</div>
