@@ -62,6 +62,24 @@ def list_documents():
     }
 
 
+@app.get("/content")
+def get_content(chars_per_doc: int = 800):
+    """
+    Returns actual document content excerpts.
+    Used by test agent to generate grounded questions.
+    """
+    docs = get_all_documents()
+    return {
+        "documents": [
+            {
+                "title":   doc["title"],
+                "content": doc["content"].strip()[:chars_per_doc],
+            }
+            for doc in docs
+        ]
+    }
+
+
 @app.post("/reload")
 def reload_index():
     """Rebuild TF-IDF index after document changes."""

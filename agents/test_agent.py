@@ -111,49 +111,67 @@ def get_prioritized_questions(all_questions: list[dict], n: int) -> list[str]:
 
 def analyze_app_and_generate_questions() -> list[dict]:
     import requests
-    print("[TestAgent] Analyzing RAG app to generate questions...")
+    import re
+    print("[TestAgent] Analyzing RAG app document content to generate questions...")
+
+    documents = []
     try:
-        info        = requests.get(f"{RAG_APP_URL}/", timeout=10).json()
-        topics_resp = requests.get(f"{RAG_APP_URL}/topics", timeout=10).json()
-        topics      = topics_resp.get("topics", [])
-        description = info.get("description", "A RAG-based question answering system")
-        topic_names = [t["title"] for t in topics]
+        resp = requests.get(f"{RAG_APP_URL}/content", params={"chars_per_doc": 800}, timeout=15)
+        if resp.status_code == 200:
+            documents = resp.json().get("documents", [])
     except Exception as e:
-        print(f"[TestAgent] Could not fetch app info: {e}")
-        description = "A RAG-based question answering system"
-        topic_names = []
+        print(f"[TestAgent] Could not fetch document content: {e}")
 
-    topic_section = f"\nTopics covered: {', '.join(topic_names)}" if topic_names else ""
+    if not documents:
+        print("[TestAgent] No documents found — cannot generate grounded questions.")
+        return [{"question": "What topics does this system cover?", "category": "general"}]
 
-    prompt = f"""You are a QA engineer generating diverse test questions for a RAG system.
+    # Build content block from actual document text
+    content_block = ""
+    for doc in documents:
+        content_block += f"\n\n--- {doc['title']} ---\n{doc['content']}"
 
-App: {description}{topic_section}
+    prompt = f"""You are a QA engineer building a test suite for a RAG system.
 
-Generate exactly 15 test questions covering:
-- Factual   (specific numbers, thresholds, dates)
-- Procedural (steps, process, how-to)
-- Conditional (edge cases, what-if scenarios)
-- Eligibility (who qualifies, who is excluded)
-- Adversarial (boundary cases, slightly wrong premise)
+Below is the ACTUAL CONTENT from the documents loaded into this RAG system.
+You MUST generate questions that can be answered using ONLY this content.
+Do NOT generate questions about topics not present in these documents.
+Do NOT generate generic or off-topic questions.
 
-Make questions specific and realistic. Avoid trivial yes/no questions.
+DOCUMENT CONTENT:
+{content_block}
 
-Respond ONLY with valid JSON array:
+Generate exactly 15 specific test questions based strictly on the content above.
+Cover these types:
+- factual     : ask about specific numbers, dates, limits, percentages mentioned
+- procedural  : ask about steps or processes described in the documents
+- eligibility : ask who qualifies or who is excluded from something
+- conditional : ask what happens in a specific scenario (edge case)
+- adversarial : slightly wrong premise to test if the app corrects it
+
+Rules:
+- Every question MUST be answerable from the document content above
+- Include the exact figures, names, or rules from the documents in questions
+- Do NOT ask about anything not mentioned in the documents
+
+Respond ONLY with a valid JSON array:
 [
   {{"question": "...", "category": "factual"}},
+  {{"question": "...", "category": "procedural"}},
   ...15 total
 ]"""
 
-    response  = llm_client.chat([{"role": "user", "content": prompt}], temperature=0.7)
-    import re
+    response = llm_client.chat([{"role": "user", "content": prompt}], temperature=0.3)
     match = re.search(r"\[.*\]", response, re.DOTALL)
     if match:
         try:
             questions = json.loads(match.group())
-            print(f"[TestAgent] Generated {len(questions)} questions.")
+            print(f"[TestAgent] Generated {len(questions)} grounded questions from document content.")
             return questions
         except json.JSONDecodeError:
             pass
+
+    print("[TestAgent] Failed to parse generated questions.")
     return [{"question": "What topics does this system cover?", "category": "general"}]
 
 
