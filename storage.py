@@ -113,26 +113,103 @@ def init_db():
             category TEXT,
             created_at TEXT NOT NULL
         );
-    """)
+
+        CREATE TABLE IF NOT EXISTS llm_cache (
+            cache_key  TEXT NOT NULL,
+            metric     TEXT NOT NULL,
+            result     TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (cache_key, metric)
+        );
+
+        CREATE TABLE IF NOT EXISTS dead_letter_queue (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            question     TEXT NOT NULL,
+            error        TEXT,
+            attempts     INTEGER DEFAULT 1,
+            created_at   TEXT NOT NULL,
+            last_attempt TEXT NOT NULL
+        );
+    “””)
     conn.commit()
 
-    # Migrate existing evaluations table â€” add new columns if missing
+    # Migrate existing evaluations table — add new columns if missing
     new_cols = [
-        ("factual_anchor_score",  "REAL"),
-        ("factual_supported",     "TEXT"),
-        ("factual_hallucinated",  "TEXT"),
-        ("golden_rouge_l",        "REAL"),
-        ("contradicts_golden",    "INTEGER DEFAULT 0"),
-        ("contradiction_detail",  "TEXT"),
+        (“factual_anchor_score”,   “REAL”),
+        (“factual_supported”,      “TEXT”),
+        (“factual_hallucinated”,   “TEXT”),
+        (“golden_rouge_l”,         “REAL”),
+        (“contradicts_golden”,     “INTEGER DEFAULT 0”),
+        (“contradiction_detail”,   “TEXT”),
+        (“eval_version”,           “TEXT”),
+        (“context_precision”,      “REAL”),
+        (“context_recall”,         “REAL”),
+        (“context_precision_reason”,”TEXT”),
+        (“context_recall_reason”,  “TEXT”),
+        (“judge_count”,            “INTEGER DEFAULT 1”),
+        (“judge_disputed”,         “INTEGER DEFAULT 0”),
     ]
     for col, col_type in new_cols:
         try:
-            conn.execute(f"ALTER TABLE evaluations ADD COLUMN {col} {col_type}")
+            conn.execute(f”ALTER TABLE evaluations ADD COLUMN {col} {col_type}”)
             conn.commit()
         except Exception:
             pass  # column already exists
 
     conn.close()
+
+
+# ── Dead Letter Queue ─────────────────────────────────────────────────────────
+
+def save_to_dlq(question: str, error: str):
+    conn = get_conn()
+    existing = conn.execute(
+        “SELECT id, attempts FROM dead_letter_queue WHERE question = ?”, (question,)
+    ).fetchone()
+    if existing:
+        conn.execute(
+            “UPDATE dead_letter_queue SET attempts = ?, error = ?, last_attempt = ? WHERE id = ?”,
+            (existing[“attempts”] + 1, error, _now(), existing[“id”]),
+        )
+    else:
+        conn.execute(
+            “INSERT INTO dead_letter_queue (question, error, attempts, created_at, last_attempt) VALUES (?,?,1,?,?)”,
+            (question, error, _now(), _now()),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_dlq_questions(max_attempts: int = 3) -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute(
+        “SELECT * FROM dead_letter_queue WHERE attempts <= ? ORDER BY attempts ASC”,
+        (max_attempts,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def remove_from_dlq(question: str):
+    conn = get_conn()
+    conn.execute(“DELETE FROM dead_letter_queue WHERE question = ?”, (question,))
+    conn.commit()
+    conn.close()
+
+
+# ── Question Prioritization ───────────────────────────────────────────────────
+
+def get_question_scores() -> dict:
+    “””Returns {question: avg_overall_score} for smart prioritization.”””
+    conn = get_conn()
+    rows = conn.execute(
+        “””SELECT question, AVG(overall_score) as avg_score, COUNT(*) as run_count
+           FROM evaluations
+           GROUP BY question”””
+    ).fetchall()
+    conn.close()
+    return {r[“question”]: {“avg_score”: r[“avg_score”], “run_count”: r[“run_count”]}
+            for r in rows}
 
 
 def save_test_run(question: str, answer: str, retrieved_context: list, sources: list) -> int:
@@ -165,12 +242,16 @@ def save_evaluation(run_id: int, question: str, scores: dict):
            (run_id, question, faithfulness, relevancy, completeness, rouge_l, overall_score,
             faithfulness_reason, relevancy_reason, completeness_reason,
             factual_anchor_score, factual_supported, factual_hallucinated,
-            golden_rouge_l, contradicts_golden, contradiction_detail, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            golden_rouge_l, contradicts_golden, contradiction_detail,
+            eval_version, judge_count, judge_disputed,
+            context_precision, context_recall,
+            context_precision_reason, context_recall_reason,
+            timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             run_id, question,
-            scores.get("faithfulness"),   scores.get("relevancy"),
-            scores.get("completeness"),   scores.get("rouge_l"),
+            scores.get("faithfulness"),      scores.get("relevancy"),
+            scores.get("completeness"),      scores.get("rouge_l"),
             scores.get("overall"),
             scores.get("faithfulness_reason", ""),
             scores.get("relevancy_reason",    ""),
@@ -181,6 +262,13 @@ def save_evaluation(run_id: int, question: str, scores: dict):
             scores.get("golden_rouge_l"),
             int(scores.get("contradicts_golden", False)),
             scores.get("contradiction_detail", ""),
+            scores.get("eval_version", ""),
+            scores.get("judge_count", 1),
+            int(scores.get("judge_disputed", False)),
+            scores.get("context_precision"),
+            scores.get("context_recall"),
+            scores.get("context_precision_reason", ""),
+            scores.get("context_recall_reason", ""),
             _now(),
         ),
     )

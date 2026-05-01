@@ -11,3 +11,5 @@ streamlit
 plotly
 pandas
 pypdf
+tenacity
+aiohttp
