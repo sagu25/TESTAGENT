@@ -61,7 +61,7 @@ def _evaluate_run(run: dict):
               f"({ctx_precision['relevant_count']}/{ctx_precision['total_chunks']} chunks relevant)")
 
     # ── LAYER 1: Factual Anchor Check (pure code) ─────────────────────────────
-    factual = metrics.evaluate_factual_anchors(answer, context_text)
+    factual = metrics.evaluate_factual_anchors(answer, context_text, question)
     print(f"  Layer 1 Factual: {factual['score']:.2f} | "
           f"supported={len(factual['supported_facts'])} "
           f"hallucinated={len(factual['hallucinated_facts'])}")

@@ -25,8 +25,9 @@ def _parse_json_from_llm(text: str) -> dict:
 
 # ── Layer 1: Factual Anchor Check (pure code, zero LLM) ──────────────────────
 
-def evaluate_factual_anchors(answer: str, source_context: str) -> dict:
-    return check_factual_anchors(answer, source_context)
+def evaluate_factual_anchors(answer: str, source_context: str,
+                              question: str = "") -> dict:
+    return check_factual_anchors(answer, source_context, question)
 
 
 # ── Layer 2: Golden Answer ROUGE-L (pure math, zero LLM) ─────────────────────
