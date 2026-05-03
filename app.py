@@ -130,7 +130,8 @@ with st.sidebar:
     page = st.radio(
         "Navigate",
         ["📄 Documents", "💬 Chat", "🧪 Start Testing", "📊 Dashboard",
-         "👁 Human Review", "⚔ Adversarial Questions", "📈 Regression"],
+         "👁 Human Review", "⚔ Adversarial Questions", "📈 Regression",
+         "📖 About Metrics"],
         label_visibility="collapsed",
     )
 
@@ -426,20 +427,40 @@ elif page == "📊 Dashboard":
     contra_cnt  = int(df["contradicts_golden"].sum()) if "contradicts_golden" in df.columns else 0
 
     # Metric cards
-    st.markdown("#### Grounded Metrics (Zero LLM)")
+    st.markdown("#### Layer 1 & 2 — Grounded Metrics (Zero LLM, Pure Math)")
+    st.caption("These scores use no AI — they are calculated purely from code and mathematics. They cannot hallucinate.")
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Factual Anchor Score", f"{avg_factual:.2f}" if avg_factual is not None else "N/A")
-    m2.metric("Golden ROUGE-L",       f"{avg_golden:.2f}"  if avg_golden  is not None else "N/A")
-    m3.metric("Contradicts Golden",   contra_cnt)
-    m4.metric("Inconsistent Questions", flagged_cnt)
+    m1.metric("Factual Anchors (L1)",
+              f"{avg_factual:.2f}" if avg_factual is not None else "N/A",
+              help="LAYER 1 — Pure Code. Extracts all numbers, percentages and dollar amounts from the source document and checks if the app's answer contains the same facts. Score 1.0 = every fact in the answer exists in the source. Score 0.0 = answer contains facts not in the document (hallucination). This is OUR ORIGINAL metric — not available in standard tools.")
+    m2.metric("Golden ROUGE-L (L2)",
+              f"{avg_golden:.2f}"  if avg_golden  is not None else "N/A",
+              help="LAYER 2 — Pure Math (LCS formula). A verified reference answer is generated from the FULL document. ROUGE-L measures text overlap between the app's answer and this reference using Longest Common Subsequence. Score 1.0 = answer is very close to reference. Score 0.0 = answer shares almost nothing with reference. ROUGE-L is an INDUSTRY STANDARD metric used since 2004.")
+    m3.metric("Contradicts Golden",
+              contra_cnt,
+              help="Number of runs where the app's answer directly contradicts the verified reference answer. Even if the answer sounds confident, if it contradicts the ground truth it is flagged here. Ideal = 0.")
+    m4.metric("Inconsistent Questions",
+              flagged_cnt,
+              help="Number of questions where the app gave meaningfully different answers across multiple runs. Consistency score below 0.75 triggers this flag. Ideal = 0. High number means the app is unreliable.")
 
-    st.markdown("#### LLM Judge Metrics (Grounded)")
+    st.markdown("#### Layer 3 — LLM Judge Metrics (AI-based, Grounded by Reference)")
+    st.caption("These scores use an AI judge that is given the verified reference answer as a reference point — making it much harder for the judge itself to hallucinate.")
     m5, m6, m7, m8, m9 = st.columns(5)
-    m5.metric("Overall Score", f"{avg_overall:.2f}")
-    m6.metric("Faithfulness",  f"{avg_faith:.2f}")
-    m7.metric("Relevancy",     f"{avg_relev:.2f}")
-    m8.metric("Completeness",  f"{avg_compl:.2f}")
-    m9.metric("Total Runs",    total_runs)
+    m5.metric("Overall Score",
+              f"{avg_overall:.2f}",
+              help="Final combined score using the formula: 25% Factual Anchors + 25% Golden ROUGE-L + 25% Faithfulness + 15% Relevancy + 10% Completeness. A hard cap of 0.45 is applied if Factual Anchors score below 0.30 — ensuring wrong facts always result in a poor overall score regardless of other metrics. Range: 0.0 to 1.0.")
+    m6.metric("Faithfulness",
+              f"{avg_faith:.2f}",
+              help="INDUSTRY STANDARD metric (from RAGAS framework, 2023). Measures whether every claim in the app's answer is supported by the retrieved context AND consistent with the golden reference. Score 1.0 = fully faithful. Score 0.0 = answer contradicts the source. Our version is stronger than standard RAGAS because the judge also has the golden answer as a reference.")
+    m7.metric("Relevancy",
+              f"{avg_relev:.2f}",
+              help="INDUSTRY STANDARD metric (from RAGAS framework, 2023). Measures whether the answer actually addresses the question asked. Score 1.0 = answer directly answers the question. Score 0.0 = answer is completely off-topic. An answer can be factually correct but irrelevant if it answers a different question.")
+    m8.metric("Completeness",
+              f"{avg_compl:.2f}",
+              help="Measures whether the answer covers ALL important information from the golden reference answer. Score 1.0 = nothing important is missing. Score 0.0 = major information missing. Our version compares against the golden answer (full document), making it stricter than standard tools that only compare against retrieved chunks.")
+    m9.metric("Total Runs",
+              total_runs,
+              help="Total number of question-answer pairs collected and evaluated so far. Each 'Run 1 Cycle' adds 3 runs. More runs = better consistency data and more reliable overall scores.")
 
     st.divider()
 
@@ -594,6 +615,369 @@ elif page == "📊 Dashboard":
         st.dataframe(df[available], use_container_width=True, hide_index=True)
 
     st.caption("Built with Streamlit + Azure OpenAI | 3-Layer Grounded Evaluation")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 8 — ABOUT METRICS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+elif page == "📖 About Metrics":
+    st.markdown("## 📖 About the Evaluation Metrics")
+    st.caption("A complete reference guide to every metric used in this system — what it measures, whether it is industry standard, the formula, and how to interpret the score.")
+    st.divider()
+
+    st.info("**How to read this page:** Each metric shows its origin (Standard / Our Design), the formula used, a real example, and what score range means good or bad performance.")
+
+    # ── Overview ──────────────────────────────────────────────────────────────
+    st.markdown("### System Overview — 3 Evaluation Layers")
+    st.markdown("""
+| Layer | Name | Method | AI Used? | Standard? |
+|---|---|---|---|---|
+| Layer 0 | Context Precision | LLM Judge | Yes | Industry Standard (RAGAS) |
+| Layer 0 | Context Recall | LLM Judge | Yes | Industry Standard (RAGAS) |
+| Layer 1 | Factual Anchor Score | Pure Code | **No** | **Our Original Design** |
+| Layer 2 | Golden ROUGE-L | Math (LCS formula) | **No** | Standard formula, our application |
+| Layer 3 | Faithfulness | LLM Judge + Golden | Yes | Industry Standard (RAGAS) |
+| Layer 3 | Relevancy | LLM Judge + Golden | Yes | Industry Standard (RAGAS) |
+| Layer 3 | Completeness | LLM Judge + Golden | Yes | Concept standard, our implementation |
+| Extra | Consistency Score | LLM Pairwise + Math | Yes | **Our Original Design** |
+| Final | Overall Score | Weighted Formula | No | **Our Original Design** |
+""")
+
+    st.divider()
+
+    # ── Layer 0 ───────────────────────────────────────────────────────────────
+    st.markdown("### Layer 0 — Retrieval Quality Metrics")
+    st.caption("These metrics evaluate the RETRIEVAL step — before the LLM even generates an answer. They tell you whether the right document chunks were fetched.")
+
+    with st.expander("📌 Context Precision — Industry Standard (RAGAS)", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**What it measures**")
+            st.write("Of all the document chunks retrieved by the RAG system, how many are actually relevant to the question being asked?")
+            st.markdown("**Origin**")
+            st.write("Industry standard metric introduced by the RAGAS framework (2023). Used by RAGAS, DeepEval, LangSmith.")
+            st.markdown("**Formula**")
+            st.code("Context Precision = Relevant Chunks / Total Retrieved Chunks", language="text")
+        with col2:
+            st.markdown("**Example**")
+            st.code("""Question: "How many vacation days?"
+
+Retrieved:
+  Chunk 1: "15 days annual leave"  ← RELEVANT
+  Chunk 2: "leave accrues monthly" ← RELEVANT
+  Chunk 3: "remote work policy"    ← NOT RELEVANT
+  Chunk 4: "health insurance"      ← NOT RELEVANT
+
+Precision = 2/4 = 0.50""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **0.80+** → Most retrieved chunks are relevant\n🟡 **0.50–0.79** → Mixed relevance\n🔴 **Below 0.50** → Retrieval is fetching wrong content")
+
+    with st.expander("📌 Context Recall — Industry Standard (RAGAS)", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**What it measures**")
+            st.write("Does the retrieved content contain ALL the information needed to fully and correctly answer the question? If key information is missing from the retrieved chunks, the LLM cannot give a complete answer even if it tries.")
+            st.markdown("**Origin**")
+            st.write("Industry standard metric from RAGAS framework (2023).")
+            st.markdown("**Formula**")
+            st.code("Context Recall = Info covered in retrieval / Total info needed to answer", language="text")
+        with col2:
+            st.markdown("**Example**")
+            st.code("""Question: "What is the leave carry-forward policy?"
+
+Golden answer needs:
+  Fact 1: "up to 5 days carry-forward"
+  Fact 2: "unused days beyond 5 lapse"
+  Fact 3: "must be used by March 31"
+
+Retrieved chunks contain: Fact 1 only
+
+Recall = 1/3 = 0.33 ← critical info missing""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **0.80+** → Retrieved content covers all needed info\n🟡 **0.50–0.79** → Partial coverage\n🔴 **Below 0.50** → Retrieval is missing important chunks")
+
+    st.divider()
+
+    # ── Layer 1 ───────────────────────────────────────────────────────────────
+    st.markdown("### Layer 1 — Factual Anchor Score")
+    st.markdown("**Our Original Design — Not Available in Standard Tools**")
+
+    with st.expander("🔴 Factual Anchor Score — Our Original Design", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**What it measures**")
+            st.write("Checks whether the specific facts in the app's answer — numbers, percentages, dollar amounts, time periods — actually exist in the source document. This uses zero AI and zero LLM. It is pure Python regex code.")
+            st.markdown("**Why we built this**")
+            st.write("LLM judges can hallucinate. If an app says '99 days leave' and a standard LLM judge evaluates it, the judge might score it 0.80 if the sentence sounds natural. Our Layer 1 says '99 is not in the source document' — mathematically, with 100% reliability.")
+            st.markdown("**Formula**")
+            st.code("""Extract from SOURCE:  numbers, %, $, time facts
+Extract from ANSWER:   numbers, %, $, time facts
+
+Supported    = facts in answer that exist in source
+Hallucinated = facts in answer NOT in source
+
+Score = Supported / (Supported + Hallucinated)""", language="text")
+        with col2:
+            st.markdown("**Example — Wrong Answer Caught**")
+            st.code("""Source: "15 days paid annual leave"
+Answer: "99 days paid vacation"
+
+Source facts:  ["15", "15 days"]
+Answer facts:  ["99", "99 days"]
+
+Supported:    0  (99 not in source)
+Hallucinated: 1  (99 is fabricated)
+
+Score = 0/1 = 0.00  CAUGHT IMMEDIATELY""", language="text")
+            st.markdown("**Example — Correct Answer**")
+            st.code("""Source: "80% of the health insurance premium"
+Answer: "Company covers 80% of premium"
+
+Supported:    1  (80% found in source)
+Hallucinated: 0
+
+Score = 1/1 = 1.00  CORRECT""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **1.00** → Every fact in answer exists in source\n🟡 **0.50–0.99** → Some facts unverified\n🔴 **Below 0.30** → Answer contains fabricated facts → Overall score hard-capped at 0.45")
+
+    st.divider()
+
+    # ── Layer 2 ───────────────────────────────────────────────────────────────
+    st.markdown("### Layer 2 — Golden ROUGE-L Score")
+    st.markdown("**Standard Formula (ROUGE since 2004), Our Application Against Golden Answer**")
+
+    with st.expander("📐 Golden ROUGE-L — Standard Formula, Our Application", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**What it measures**")
+            st.write("How similar is the app's answer to a verified reference answer generated from the FULL document? The Golden Answer is created by giving the LLM the complete policy document (not just retrieved chunks) — making it more complete and accurate than what the RAG app produces.")
+            st.markdown("**What is ROUGE-L?**")
+            st.write("ROUGE = Recall-Oriented Understudy for Gisting Evaluation. Introduced in 2004 by Chin-Yew Lin. Used by Google, Meta, and academic researchers worldwide for evaluating text generation quality.")
+            st.markdown("**Formula**")
+            st.code("""LCS = Longest Common Subsequence
+       (longest sequence of words appearing in both texts
+        in the same order, not necessarily consecutive)
+
+Precision = LCS / length(app answer)
+Recall    = LCS / length(golden answer)
+ROUGE-L   = 2 × Precision × Recall / (Precision + Recall)""", language="text")
+            st.markdown("**Why ROUGE-L not ROUGE-1 or ROUGE-2?**")
+            st.code("""ROUGE-1: counts individual word overlaps
+         → misses word order, too lenient
+ROUGE-2: counts 2-word phrase overlaps
+         → too strict, penalises paraphrasing
+ROUGE-L: longest common subsequence
+         → handles paraphrasing + word order
+         → best balance for RAG evaluation""", language="text")
+        with col2:
+            st.markdown("**Example — Correct Answer (High Score)**")
+            st.code("""Golden: "Full-time employees are entitled to
+         15 days of paid annual leave per year"
+
+Answer: "Employees receive 15 days of annual leave"
+
+LCS = "employees ... 15 days ... annual leave"
+
+Precision = 6/7  = 0.86
+Recall    = 6/11 = 0.55
+ROUGE-L   = 2×0.86×0.55 / (0.86+0.55) = 0.67""", language="text")
+            st.markdown("**Example — Wrong Answer (Low Score)**")
+            st.code("""Golden: "15 days of paid annual leave per year"
+
+Answer: "Employees get 99 days vacation"
+
+LCS = "employees" only (just 1 word)
+
+ROUGE-L = very low (~0.08)
+          Answer is far from the reference""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **0.70+** → Answer closely matches reference\n🟡 **0.40–0.69** → Partial match, possible gaps\n🔴 **Below 0.40** → Answer significantly different from reference")
+
+    st.divider()
+
+    # ── Layer 3 ───────────────────────────────────────────────────────────────
+    st.markdown("### Layer 3 — LLM Judge Metrics")
+    st.caption("These metrics use an AI model (Azure OpenAI / Groq) as a judge. Unlike standard tools, our judge is given the verified Golden Answer as a reference — making it significantly harder for the judge itself to hallucinate.")
+
+    with st.expander("🤖 Faithfulness — Industry Standard (RAGAS), Enhanced by Us", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**What it measures**")
+            st.write("Is every claim in the app's answer supported by the retrieved context AND consistent with the verified golden answer? Faithfulness catches hallucinations — when the app makes up facts not in the source.")
+            st.markdown("**Origin**")
+            st.write("Core metric from RAGAS framework (2023). Used by RAGAS, TruLens, DeepEval, LangSmith, Arize AI.")
+            st.markdown("**Our Enhancement**")
+            st.write("Standard RAGAS Faithfulness only uses retrieved context as reference. Our version also gives the judge the Golden Answer — so the judge has a verified ground truth to compare against, making it much harder to be fooled by confident-sounding wrong answers.")
+        with col2:
+            st.markdown("**Example**")
+            st.code("""Context:  "Employees get 15 days leave"
+Golden:   "15 days paid annual leave per year"
+Answer:   "Employees get 30 days leave"
+
+Judge asks:
+  "Does answer contradict golden?"  YES
+  "Is 30 days in the context?"      NO
+
+Faithfulness = 0.05  LOW — correctly caught""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **0.80+** → Answer is grounded and faithful\n🟡 **0.50–0.79** → Some claims unverified\n🔴 **Below 0.50** → Answer contains hallucinations or contradictions")
+
+    with st.expander("🤖 Relevancy — Industry Standard (RAGAS), Enhanced by Us", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**What it measures**")
+            st.write("Does the answer actually address the question that was asked? An answer can be factually correct but completely irrelevant if it answers a different question.")
+            st.markdown("**Origin**")
+            st.write("Core metric from RAGAS framework (2023). Also called Answer Relevancy in standard tools.")
+        with col2:
+            st.markdown("**Example**")
+            st.code("""Question: "How many vacation days?"
+Answer A: "15 days paid leave"
+          → Relevant → Score: 1.00
+
+Answer B: "The company has remote work policy"
+          → Off-topic → Score: 0.05
+
+Answer C: "Leave policies vary"
+          → Vague, avoids question → Score: 0.40""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **0.80+** → Directly answers the question\n🟡 **0.50–0.79** → Partially relevant\n🔴 **Below 0.50** → Off-topic or evasive")
+
+    with st.expander("🤖 Completeness — Concept Standard, Our Implementation", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**What it measures**")
+            st.write("Does the answer cover ALL important information from the golden reference? This catches answers that are correct but incomplete — missing key rules, limits, or conditions.")
+            st.markdown("**Our Difference from Standard**")
+            st.write("Standard tools compare completeness against retrieved context chunks. We compare against the Golden Answer (full document) — which is a stricter and more meaningful benchmark.")
+        with col2:
+            st.markdown("**Example**")
+            st.code("""Question: "What is the leave carry-forward policy?"
+
+Golden: "Up to 5 days carry-forward.
+         Beyond 5 days lapses.
+         Must use by March 31."
+
+Answer: "You can carry forward unused leave."
+
+Completeness = 0.15  ← missed 5-day limit,
+                         lapse rule, deadline""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **0.80+** → Covers everything in the reference\n🟡 **0.50–0.79** → Some details missing\n🔴 **Below 0.50** → Major information omitted")
+
+    st.divider()
+
+    # ── Consistency ───────────────────────────────────────────────────────────
+    st.markdown("### Consistency Score — Our Original Design")
+
+    with st.expander("🔄 Consistency Score — Our Original Design", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**What it measures**")
+            st.write("When the same question is asked multiple times across different test cycles, does the app give the same answer? Inconsistency means the app is unreliable — users asking the same question may get different (possibly contradictory) answers.")
+            st.markdown("**Why this matters**")
+            st.write("Most RAG evaluation tools evaluate one run at a time. They cannot tell you if the app is consistent over time. Our system stores every answer forever and compares them — catching drift, contradictions, and instability.")
+            st.markdown("**Formula**")
+            st.code("""For N answers to same question:
+
+1. Pairwise Semantic Similarity
+   sim(answer_i, answer_j) for all pairs
+   avg_similarity = mean of all pairs
+
+2. Contradiction Rate
+   contradiction_rate = contradicting_pairs / total_pairs
+
+3. Drift Score
+   drift = 1 - sim(first_answer, latest_answer)
+
+4. Final Score
+   Consistency = avg_similarity
+               × (1 - contradiction_rate)
+               × (1 - 0.5 × drift)
+
+Flagged as INCONSISTENT if score < 0.75""", language="text")
+        with col2:
+            st.markdown("**Example**")
+            st.code("""Question: "How many vacation days?"
+
+Run 1: "15 days paid leave"
+Run 2: "15 annual leave days"
+Run 3: "30 days vacation"     ← PROBLEM
+Run 4: "15 days paid annually"
+
+avg_similarity     = 0.51
+contradiction_rate = 3/6 = 0.50
+drift (Run1→Run4)  = 0.09
+
+Consistency = 0.51 × 0.50 × 0.955
+            = 0.24  FLAGGED""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **0.90+** → Same answer every time — very stable\n🟡 **0.75–0.89** → Minor phrasing variation — acceptable\n🔴 **Below 0.75** → Flagged — app giving different answers")
+
+    st.divider()
+
+    # ── Overall Formula ───────────────────────────────────────────────────────
+    st.markdown("### Overall Score Formula — Our Original Design")
+
+    with st.expander("⚖ Overall Score — Weighted Formula with Hard Cap", expanded=True):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("**Formula**")
+            st.code("""Overall = 0.25 × Factual Anchor Score  (L1)
+        + 0.25 × Golden ROUGE-L          (L2)
+        + 0.25 × Faithfulness            (L3)
+        + 0.15 × Relevancy               (L3)
+        + 0.10 × Completeness            (L3)
+
+HARD CAP RULE:
+If Factual Anchor Score < 0.30
+→ Overall is capped at maximum 0.45
+  regardless of other scores""", language="text")
+            st.markdown("**Why these weights?**")
+            st.code("""Factual (0.25):    Most reliable — zero AI, deterministic
+Golden ROUGE (0.25): Mathematical ground truth
+Faithfulness (0.25): Core RAG health metric
+Relevancy (0.15):    Important but secondary
+Completeness (0.10): Partial answer > no answer""", language="text")
+        with col2:
+            st.markdown("**Why the Hard Cap?**")
+            st.code("""Without hard cap:
+  Factual: 0.10  (app said 99 days — WRONG)
+  ROUGE-L: 0.15
+  Faith:   0.90  (LLM judge was fooled)
+  Relev:   0.95
+  Compl:   0.80
+  Overall: 0.51  ← YELLOW — misleadingly ok
+
+With hard cap:
+  Factual < 0.30 → cap at 0.45
+  Overall: 0.45  ← RED — correctly flagged
+
+Wrong facts must always produce a poor score.""", language="text")
+            st.markdown("**Score Guide**")
+            st.markdown("🟢 **0.80–1.00** → GOOD — App performing well\n🟡 **0.60–0.79** → WARNING — Some issues detected\n🔴 **0.00–0.59** → POOR — App has serious problems")
+
+    st.divider()
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    st.markdown("### Standard vs Our Design — Quick Reference")
+    st.markdown("""
+| Metric | Standard or Ours | Based On |
+|---|---|---|
+| Context Precision | **Industry Standard** | RAGAS 2023 |
+| Context Recall | **Industry Standard** | RAGAS 2023 |
+| ROUGE-L formula | **Industry Standard** | Lin 2004, used by Google/Meta |
+| Faithfulness | **Standard concept, enhanced** | RAGAS 2023 + our golden reference |
+| Relevancy | **Standard concept, enhanced** | RAGAS 2023 + our golden reference |
+| Completeness | **Standard concept, our impl.** | Inspired by DeepEval |
+| Factual Anchor Score | **Our Original Design** | Built from scratch |
+| Consistency Score | **Our Original Design** | Built from scratch |
+| Evaluation Versioning | **Our Original Design** | Built from scratch |
+| Overall Score Formula | **Our Original Design** | Built from scratch |
+""")
+
+    st.success("**The standard metrics (ROUGE-L, Faithfulness, Relevancy, Context Precision/Recall) validate our system against industry benchmarks. The original metrics (Factual Anchors, Consistency, Eval Versioning) address gaps that existing tools do not cover.**")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
