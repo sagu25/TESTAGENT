@@ -17,6 +17,10 @@ QUESTIONS_PER_CYCLE = int(os.getenv("QUESTIONS_PER_CYCLE", "3"))
 
 async def _fire_async(session, question: str) -> dict | None:
     import aiohttp
+    # Route to Blueverse if configured
+    if RAG_APP_URL.lower() == "blueverse":
+        import blueverse_connector
+        return blueverse_connector.query(question)
     try:
         async with session.post(
             f"{RAG_APP_URL}/query",

@@ -9,6 +9,7 @@ import json
 import sqlite3
 import requests
 import threading
+import time
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -16,6 +17,34 @@ load_dotenv()
 
 DB_PATH  = os.path.join(os.path.dirname(__file__), "eval_results.db")
 RAG_URL  = os.getenv("RAG_APP_URL", "http://localhost:8000")
+
+# ── Auto-testing global state (persists across Streamlit reruns) ──────────────
+_auto_stop_event  : threading.Event | None = None
+_auto_thread      : threading.Thread | None = None
+_auto_run_count   = 0
+_auto_started_at  : str | None = None
+
+
+def _auto_loop(stop_event: threading.Event, interval: int):
+    global _auto_run_count
+    while not stop_event.is_set():
+        try:
+            from dotenv import load_dotenv as _ld
+            _ld()
+            import storage as _s
+            _s.init_db()
+            from agents.test_agent import run as _run_test
+            from agents.evaluator_agent import run as _run_eval
+            _run_test()
+            _run_eval()
+            _auto_run_count += 1
+        except Exception as e:
+            print(f"[AutoTest] Error: {e}")
+        stop_event.wait(timeout=interval)
+
+
+def is_auto_running() -> bool:
+    return _auto_thread is not None and _auto_thread.is_alive()
 
 st.set_page_config(
     page_title="RAG Evaluation System",
@@ -318,7 +347,73 @@ elif page == "🧪 Start Testing":
 
     st.divider()
 
-    # Run controls
+    # ── Auto Testing Section ──────────────────────────────────────────────────
+    st.markdown("### Auto Testing")
+
+    auto_col1, auto_col2, auto_col3 = st.columns([2, 1, 2])
+
+    with auto_col1:
+        auto_interval = st.slider(
+            "Interval (seconds)", min_value=15, max_value=300,
+            value=30, step=5,
+            help="How often to fire a question automatically"
+        )
+
+    with auto_col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if is_auto_running():
+            st.success(f"Running — {_auto_run_count} runs")
+        else:
+            st.info("Stopped")
+
+    with auto_col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        a1, a2 = st.columns(2)
+        start_auto = a1.button(
+            "▶ Start Auto", use_container_width=True, type="primary",
+            disabled=is_auto_running(),
+            help=f"Fire 1 question every {auto_interval} seconds automatically"
+        )
+        stop_auto = a2.button(
+            "⏹ Stop Auto", use_container_width=True,
+            disabled=not is_auto_running(),
+            help="Stop automatic testing"
+        )
+
+    if start_auto and not is_auto_running():
+        global _auto_stop_event, _auto_thread, _auto_run_count, _auto_started_at
+        _auto_run_count  = 0
+        _auto_started_at = datetime.utcnow().strftime("%H:%M:%S")
+        _auto_stop_event = threading.Event()
+        _auto_thread     = threading.Thread(
+            target=_auto_loop,
+            args=(_auto_stop_event, auto_interval),
+            daemon=True, name="streamlit-auto-test"
+        )
+        _auto_thread.start()
+        st.success(f"Auto testing started — firing every {auto_interval}s. Dashboard updates automatically.")
+        st.rerun()
+
+    if stop_auto and is_auto_running():
+        _auto_stop_event.set()
+        st.warning(f"Auto testing stopped after {_auto_run_count} runs.")
+        st.rerun()
+
+    if is_auto_running():
+        st.caption(
+            f"Auto testing active since {_auto_started_at} | "
+            f"Interval: {auto_interval}s | "
+            f"Runs: {_auto_run_count} | "
+            f"Dashboard refreshes every 30s automatically"
+        )
+        # Auto-refresh the page so scores update
+        st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Manual Run Controls ───────────────────────────────────────────────────
+    st.markdown("### Manual Testing")
+
     c1, c2, c3 = st.columns(3)
 
     with c1:
