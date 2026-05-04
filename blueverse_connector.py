@@ -16,6 +16,8 @@ CHAT_URL      = os.getenv("BLUEVERSE_CHAT_URL", "")
 CLIENT_ID     = os.getenv("BLUEVERSE_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("BLUEVERSE_CLIENT_SECRET", "")
 VERIFY_SSL    = os.getenv("BLUEVERSE_VERIFY_SSL", "true").lower() != "false"
+AGENT_ID      = os.getenv("BLUEVERSE_AGENT_ID", "")
+AGENT_NAME    = os.getenv("BLUEVERSE_AGENT_NAME", "")
 
 # Configurable field names — adjust based on Blueverse API format
 REQUEST_FIELD  = os.getenv("BLUEVERSE_REQUEST_FIELD",  "message")
@@ -61,17 +63,21 @@ def _get_access_token() -> str:
 
 def configure(token_url: str, chat_url: str,
               client_id: str, client_secret: str,
+              agent_id: str = "",
+              agent_name: str = "",
               verify_ssl: bool = True,
               request_field: str = "message",
               response_field: str = "response"):
     """Dynamically configure Blueverse credentials at runtime (called by MCP tool)."""
     global TOKEN_URL, CHAT_URL, CLIENT_ID, CLIENT_SECRET
-    global VERIFY_SSL, REQUEST_FIELD, RESPONSE_FIELD
+    global AGENT_ID, AGENT_NAME, VERIFY_SSL, REQUEST_FIELD, RESPONSE_FIELD
 
     TOKEN_URL      = token_url
     CHAT_URL       = chat_url
     CLIENT_ID      = client_id
     CLIENT_SECRET  = client_secret
+    AGENT_ID       = agent_id
+    AGENT_NAME     = agent_name
     VERIFY_SSL     = verify_ssl
     REQUEST_FIELD  = request_field
     RESPONSE_FIELD = response_field
@@ -92,7 +98,12 @@ def query(question: str) -> dict | None:
             "Authorization": f"Bearer {token}",
             "Content-Type":  "application/json",
         }
-        payload  = {REQUEST_FIELD: question}
+        # Build request payload — include agent ID/name if configured
+        payload = {REQUEST_FIELD: question}
+        if AGENT_ID:
+            payload["agent_id"]   = AGENT_ID
+        if AGENT_NAME:
+            payload["agent_name"] = AGENT_NAME
         resp     = requests.post(CHAT_URL, json=payload, headers=headers,
                                  verify=VERIFY_SSL, timeout=60)
         resp.raise_for_status()

@@ -106,6 +106,8 @@ def configure_agent(
     chat_url:       str,
     client_id:      str,
     client_secret:  str,
+    agent_id:       str = "",
+    agent_name:     str = "",
     description:    str = "Employee policy AI assistant",
     request_field:  str = "message",
     response_field: str = "response",
@@ -119,6 +121,8 @@ def configure_agent(
       chat_url:       Blueverse chat/query endpoint URL
       client_id:      OAuth2 client ID
       client_secret:  OAuth2 client secret
+      agent_id:       Blueverse agent ID (from agent settings in Blueverse Foundry)
+      agent_name:     Blueverse agent name (from agent settings in Blueverse Foundry)
       description:    What the agent covers (used to generate test questions)
       request_field:  JSON field name for the question (default: message)
       response_field: JSON field name for the answer (default: response)
@@ -129,6 +133,8 @@ def configure_agent(
         chat_url       = chat_url,
         client_id      = client_id,
         client_secret  = client_secret,
+        agent_id       = agent_id,
+        agent_name     = agent_name,
         verify_ssl     = verify_ssl,
         request_field  = request_field,
         response_field = response_field,
