@@ -116,47 +116,68 @@ def get_prioritized_questions(all_questions: list[dict], n: int) -> list[str]:
 def analyze_app_and_generate_questions() -> list[dict]:
     import requests
     import re
-    print("[TestAgent] Analyzing RAG app document content to generate questions...")
+    print("[TestAgent] Analyzing app to generate grounded questions...")
 
-    documents = []
-    try:
-        resp = requests.get(f"{RAG_APP_URL}/content", params={"chars_per_doc": 800}, timeout=15)
-        if resp.status_code == 200:
-            documents = resp.json().get("documents", [])
-    except Exception as e:
-        print(f"[TestAgent] Could not fetch document content: {e}")
+    content_block = ""
 
-    if not documents:
-        print("[TestAgent] No documents found — cannot generate grounded questions.")
+    if RAG_APP_URL.lower() == "blueverse":
+        # ── Blueverse: probe the agent to discover what it knows ──────────────
+        print("[TestAgent] Target is Blueverse — probing agent knowledge...")
+        import blueverse_connector
+        content_block = blueverse_connector.probe_agent_knowledge()
+        source_label  = "Blueverse agent (self-reported knowledge)"
+
+    else:
+        # ── Custom RAG App: fetch actual document content ─────────────────────
+        documents = []
+        try:
+            resp = requests.get(
+                f"{RAG_APP_URL}/content",
+                params={"chars_per_doc": 800},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                documents = resp.json().get("documents", [])
+        except Exception as e:
+            print(f"[TestAgent] Could not fetch document content: {e}")
+
+        if not documents:
+            print("[TestAgent] No documents found — cannot generate grounded questions.")
+            return [{"question": "What topics does this system cover?",
+                     "category": "general"}]
+
+        for doc in documents:
+            content_block += f"\n\n--- {doc['title']} ---\n{doc['content']}"
+        source_label = "RAG app document content"
+
+    if not content_block.strip():
+        print("[TestAgent] No content discovered. Using fallback question.")
         return [{"question": "What topics does this system cover?", "category": "general"}]
 
-    # Build content block from actual document text
-    content_block = ""
-    for doc in documents:
-        content_block += f"\n\n--- {doc['title']} ---\n{doc['content']}"
+    print(f"[TestAgent] Generating questions from: {source_label}")
 
-    prompt = f"""You are a QA engineer building a test suite for a RAG system.
+    prompt = f"""You are a QA engineer building a test suite for an AI assistant.
 
-Below is the ACTUAL CONTENT from the documents loaded into this RAG system.
-You MUST generate questions that can be answered using ONLY this content.
-Do NOT generate questions about topics not present in these documents.
-Do NOT generate generic or off-topic questions.
+Below is what the AI assistant knows (either from documents or its own description).
+You MUST generate questions that can ONLY be answered from this content.
+Do NOT generate questions about topics NOT mentioned below.
+Do NOT generate generic, off-topic, or trivial yes/no questions.
 
-DOCUMENT CONTENT:
+WHAT THE ASSISTANT KNOWS:
 {content_block}
 
-Generate exactly 15 specific test questions based strictly on the content above.
+Generate exactly 15 specific test questions strictly based on the content above.
 Cover these types:
-- factual     : ask about specific numbers, dates, limits, percentages mentioned
-- procedural  : ask about steps or processes described in the documents
-- eligibility : ask who qualifies or who is excluded from something
-- conditional : ask what happens in a specific scenario (edge case)
-- adversarial : slightly wrong premise to test if the app corrects it
+- factual     : specific numbers, limits, percentages, dates mentioned above
+- procedural  : steps or processes described above
+- eligibility : who qualifies or who is excluded
+- conditional : edge cases (what happens if X)
+- adversarial : slightly wrong premise to test if the agent corrects it
 
 Rules:
-- Every question MUST be answerable from the document content above
-- Include the exact figures, names, or rules from the documents in questions
-- Do NOT ask about anything not mentioned in the documents
+- Every question MUST be answerable from the content above
+- Include exact figures and rules from the content in your questions
+- Do NOT ask about anything not mentioned in the content above
 
 Respond ONLY with a valid JSON array:
 [
@@ -166,11 +187,11 @@ Respond ONLY with a valid JSON array:
 ]"""
 
     response = llm_client.chat([{"role": "user", "content": prompt}], temperature=0.3)
-    match = re.search(r"\[.*\]", response, re.DOTALL)
+    match    = re.search(r"\[.*\]", response, re.DOTALL)
     if match:
         try:
             questions = json.loads(match.group())
-            print(f"[TestAgent] Generated {len(questions)} grounded questions from document content.")
+            print(f"[TestAgent] Generated {len(questions)} grounded questions.")
             return questions
         except json.JSONDecodeError:
             pass

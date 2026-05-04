@@ -143,3 +143,37 @@ def is_online() -> bool:
         return True
     except Exception:
         return False
+
+
+def probe_agent_knowledge() -> str:
+    """
+    Ask the Blueverse agent 3 discovery questions to understand what it knows.
+    The combined response is used to generate grounded test questions.
+    Falls back to BLUEVERSE_DESCRIPTION env var if probing fails.
+    """
+    probe_questions = [
+        "What topics and subjects can you help me with? Please be specific.",
+        "What kind of information do you have access to? List all areas you cover.",
+        "Give me a summary of the policies and rules you know about, "
+        "including any specific numbers, limits or percentages.",
+    ]
+
+    print("[Blueverse] Probing agent to discover what it knows...")
+    responses = []
+
+    for q in probe_questions:
+        result = query(q)
+        if result and result.get("answer"):
+            responses.append(result["answer"])
+            print(f"[Blueverse] Probe: {result['answer'][:100]}...")
+
+    if responses:
+        combined = "\n\n".join(responses)
+        print(f"[Blueverse] Knowledge discovered from {len(responses)} probe questions.")
+        return combined
+
+    # Fallback to manual description
+    fallback = os.getenv("BLUEVERSE_DESCRIPTION",
+                         "Blueverse AI agent — an enterprise AI assistant")
+    print("[Blueverse] Probing failed. Using BLUEVERSE_DESCRIPTION from .env.")
+    return fallback
