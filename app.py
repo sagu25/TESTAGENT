@@ -63,7 +63,17 @@ def get_conn():
     return conn
 
 
+def is_blueverse_mode() -> bool:
+    return os.getenv("RAG_APP_URL", "http://localhost:8000").lower() == "blueverse"
+
+
 def rag_online() -> bool:
+    if is_blueverse_mode():
+        try:
+            import blueverse_connector
+            return blueverse_connector.is_online()
+        except Exception:
+            return False
     try:
         r = requests.get(f"{RAG_URL}/", timeout=3)
         return r.status_code == 200
@@ -149,10 +159,16 @@ def run_pipeline_once():
 with st.sidebar:
     st.markdown("## 🧠 RAG Eval System")
     online = rag_online()
-    if online:
-        st.success("RAG App: Online")
+    if is_blueverse_mode():
+        if online:
+            st.success("Blueverse: Connected")
+        else:
+            st.error("Blueverse: Offline — check credentials + VPN")
     else:
-        st.error("RAG App: Offline — run `python start_rag_app.py`")
+        if online:
+            st.success("RAG App: Online")
+        else:
+            st.error("RAG App: Offline — run `python start_rag_app.py`")
 
     st.divider()
 
@@ -254,7 +270,10 @@ elif page == "💬 Chat":
     st.divider()
 
     if not online:
-        st.error("RAG App is offline. Please run `python start_rag_app.py` first.")
+        if is_blueverse_mode():
+            st.error("Blueverse is not reachable. Check credentials and VPN connection.")
+        else:
+            st.error("RAG App is offline. Please run `python start_rag_app.py` first.")
         st.stop()
 
     if "chat_history" not in st.session_state:
@@ -313,7 +332,10 @@ elif page == "🧪 Start Testing":
     st.divider()
 
     if not online:
-        st.error("RAG App is offline. Please run `python start_rag_app.py` first.")
+        if is_blueverse_mode():
+            st.error("Blueverse is not reachable. Check credentials and VPN connection.")
+        else:
+            st.error("RAG App is offline. Please run `python start_rag_app.py` first.")
         st.stop()
 
     # Show generated questions
