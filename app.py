@@ -504,6 +504,11 @@ elif page == "📊 Dashboard":
     st.markdown("## 📊 Evaluation Dashboard")
     st.caption(f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
+    # Auto-refresh dashboard every 30s when auto-testing is active
+    if is_auto_running():
+        st.success(f"Auto Testing Active — {_auto_run_count} runs completed | Dashboard refreshes every 30s")
+        st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
+
     col_r, col_dl = st.columns([5, 1])
     with col_r:
         if st.button("🔄 Refresh"):
