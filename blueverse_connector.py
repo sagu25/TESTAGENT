@@ -98,12 +98,13 @@ def query(question: str) -> dict | None:
             "Authorization": f"Bearer {token}",
             "Content-Type":  "application/json",
         }
-        # Build request payload — include agent ID/name if configured
+        # Build request payload using Blueverse API format:
+        # {"query": "...", "space_name": "...", "flowId": "..."}
         payload = {REQUEST_FIELD: question}
         if AGENT_ID:
-            payload["agent_id"]   = AGENT_ID
+            payload["flowId"]     = AGENT_ID    # Blueverse uses flowId
         if AGENT_NAME:
-            payload["agent_name"] = AGENT_NAME
+            payload["space_name"] = AGENT_NAME  # Blueverse uses space_name
         resp     = requests.post(CHAT_URL, json=payload, headers=headers,
                                  verify=VERIFY_SSL, timeout=60)
         resp.raise_for_status()
