@@ -403,7 +403,6 @@ elif page == "🧪 Start Testing":
         )
 
     if start_auto and not is_auto_running():
-        global _auto_stop_event, _auto_thread, _auto_run_count, _auto_started_at
         _auto_run_count  = 0
         _auto_started_at = datetime.utcnow().strftime("%H:%M:%S")
         _auto_stop_event = threading.Event()
