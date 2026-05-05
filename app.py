@@ -336,7 +336,8 @@ def score_color(score):
 _score_color = score_color  # alias used in metric cards
 
 
-def score_badge(score):
+def score_badge_plain(score):
+    """Plain text badge used in per-question table rows."""
     if score is None: return "⚪ N/A"
     if score >= 0.80: return f"🟢 {score:.2f}"
     if score >= 0.60: return f"🟡 {score:.2f}"
@@ -928,15 +929,15 @@ elif page == "📊 Dashboard":
                 r1.markdown(f"**Run {i+1}**")
                 answer_text = (row.get("answer") or "")[:180]
                 r2.caption(f"⚠ {answer_text}" if contradicts else answer_text)
-                r3.markdown(score_badge(row.get("factual_anchor_score")),
+                r3.markdown(score_badge_plain(row.get("factual_anchor_score")),
                             help=f"Hallucinated: {hallucinated[:2]}")
-                r4.markdown(score_badge(row.get("golden_rouge_l")),
+                r4.markdown(score_badge_plain(row.get("golden_rouge_l")),
                             help="ROUGE-L vs golden")
-                r5.markdown(score_badge(row.get("faithfulness")),
+                r5.markdown(score_badge_plain(row.get("faithfulness")),
                             help=row.get("faithfulness_reason", ""))
-                r6.markdown(score_badge(row.get("relevancy")),
+                r6.markdown(score_badge_plain(row.get("relevancy")),
                             help=row.get("relevancy_reason", ""))
-                r7.markdown(score_badge(row.get("completeness")),
+                r7.markdown(score_badge_plain(row.get("completeness")),
                             help=row.get("completeness_reason", ""))
                 o  = row.get("overall_score")
                 bg = score_color(o)
