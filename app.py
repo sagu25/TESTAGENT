@@ -46,6 +46,252 @@ def _auto_loop(stop_event: threading.Event, interval: int):
 def is_auto_running() -> bool:
     return _auto_thread is not None and _auto_thread.is_alive()
 
+
+def inject_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* ── Hide default Streamlit header ── */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    /* ── App background ── */
+    .stApp { background: #f1f5f9; }
+
+    /* ── Sidebar ── */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+        border-right: 1px solid #334155;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #e2e8f0 !important;
+    }
+    section[data-testid="stSidebar"] .stRadio label {
+        color: #cbd5e1 !important;
+        font-size: 14px;
+        padding: 6px 0;
+    }
+    section[data-testid="stSidebar"] .stRadio label:hover {
+        color: #6366f1 !important;
+    }
+    section[data-testid="stSidebar"] hr {
+        border-color: #334155 !important;
+    }
+
+    /* ── Page header banner ── */
+    .page-header {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+        border-radius: 16px;
+        padding: 28px 32px;
+        margin-bottom: 24px;
+        color: white;
+        box-shadow: 0 10px 40px rgba(99,102,241,0.3);
+    }
+    .page-header h1 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 700;
+        color: white !important;
+    }
+    .page-header p {
+        margin: 6px 0 0 0;
+        opacity: 0.85;
+        font-size: 15px;
+        color: white !important;
+    }
+
+    /* ── Metric cards ── */
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    .metric-card {
+        background: white;
+        border-radius: 14px;
+        padding: 20px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        border: 1px solid #e2e8f0;
+        text-align: center;
+        transition: transform 0.2s;
+    }
+    .metric-card:hover { transform: translateY(-2px); }
+    .metric-value {
+        font-size: 34px;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+    .metric-label {
+        font-size: 12px;
+        color: #64748b;
+        margin-top: 6px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* ── Score badges ── */
+    .badge-good  { background:#dcfce7; color:#16a34a; border-radius:8px; padding:4px 10px; font-weight:600; font-size:13px; }
+    .badge-warn  { background:#fef9c3; color:#ca8a04; border-radius:8px; padding:4px 10px; font-weight:600; font-size:13px; }
+    .badge-poor  { background:#fee2e2; color:#dc2626; border-radius:8px; padding:4px 10px; font-weight:600; font-size:13px; }
+    .badge-na    { background:#f1f5f9; color:#64748b; border-radius:8px; padding:4px 10px; font-weight:600; font-size:13px; }
+
+    /* ── Section titles ── */
+    .section-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 24px 0 16px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .section-title::after {
+        content: '';
+        flex: 1;
+        height: 2px;
+        background: linear-gradient(90deg, #6366f1, transparent);
+        margin-left: 12px;
+        border-radius: 2px;
+    }
+
+    /* ── Alert boxes ── */
+    .alert-danger {
+        background: #fff5f5;
+        border: 1px solid #fecaca;
+        border-left: 4px solid #ef4444;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin: 12px 0;
+    }
+    .alert-success {
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-left: 4px solid #22c55e;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin: 12px 0;
+    }
+    .alert-info {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-left: 4px solid #6366f1;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin: 12px 0;
+    }
+
+    /* ── Auto-testing live banner ── */
+    .live-banner {
+        background: linear-gradient(135deg, #064e3b, #065f46);
+        border-radius: 12px;
+        padding: 14px 20px;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: white;
+    }
+    .live-dot {
+        width: 10px; height: 10px;
+        background: #4ade80;
+        border-radius: 50%;
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0%,100% { opacity:1; transform:scale(1); }
+        50%      { opacity:0.5; transform:scale(1.4); }
+    }
+
+    /* ── Expander styling ── */
+    .streamlit-expanderHeader {
+        background: white !important;
+        border-radius: 10px !important;
+        border: 1px solid #e2e8f0 !important;
+        font-weight: 600 !important;
+    }
+
+    /* ── Buttons ── */
+    .stButton > button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+    }
+
+    /* ── Status card ── */
+    .status-online  { color:#16a34a; font-weight:700; }
+    .status-offline { color:#dc2626; font-weight:700; }
+
+    /* ── Tables ── */
+    .score-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .score-table th {
+        background:#f8fafc;
+        padding:10px 12px;
+        text-align:left;
+        font-weight:600;
+        color:#475569;
+        border-bottom:2px solid #e2e8f0;
+    }
+    .score-table td {
+        padding:10px 12px;
+        border-bottom:1px solid #f1f5f9;
+        color:#1e293b;
+    }
+    .score-table tr:hover { background:#f8fafc; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def render_header(title: str, subtitle: str = "", icon: str = "🧠"):
+    st.markdown(f"""
+    <div class="page-header">
+        <h1>{icon} {title}</h1>
+        {'<p>' + subtitle + '</p>' if subtitle else ''}
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def metric_card(label: str, value: str, color: str = "#6366f1", help_text: str = "") -> str:
+    return f"""
+    <div class="metric-card" title="{help_text}">
+        <div class="metric-value" style="color:{color};">{value}</div>
+        <div class="metric-label">{label}</div>
+    </div>"""
+
+
+def score_badge(score) -> str:
+    if score is None:
+        return '<span class="badge-na">N/A</span>'
+    if score >= 0.80:
+        return f'<span class="badge-good">🟢 {score:.2f}</span>'
+    if score >= 0.60:
+        return f'<span class="badge-warn">🟡 {score:.2f}</span>'
+    return f'<span class="badge-poor">🔴 {score:.2f}</span>'
+
+
+def live_banner(run_count: int):
+    st.markdown(f"""
+    <div class="live-banner">
+        <div class="live-dot"></div>
+        <div>
+            <strong style="color:white;">Auto Testing Active</strong>
+            <span style="color:#a7f3d0;margin-left:12px;">{run_count} runs completed</span>
+            <span style="color:#6ee7b7;margin-left:12px;font-size:12px;">Dashboard refreshes every 30s</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 st.set_page_config(
     page_title="RAG Evaluation System",
     page_icon="🧠",
@@ -86,6 +332,8 @@ def score_color(score):
     if score >= 0.80: return "#22c55e"
     if score >= 0.60: return "#f59e0b"
     return "#ef4444"
+
+_score_color = score_color  # alias used in metric cards
 
 
 def score_badge(score):
@@ -156,19 +404,31 @@ def run_pipeline_once():
 
 # ── sidebar ───────────────────────────────────────────────────────────────────
 
+inject_css()
+
 with st.sidebar:
-    st.markdown("## 🧠 RAG Eval System")
+    st.markdown("""
+    <div style="text-align:center;padding:20px 0 10px 0;">
+        <div style="font-size:40px;">🧠</div>
+        <div style="font-size:18px;font-weight:700;color:#e2e8f0;margin-top:8px;">RAG Eval System</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Automated AI Quality Control</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.divider()
+
     online = rag_online()
     if is_blueverse_mode():
         if online:
-            st.success("Blueverse: Connected")
+            st.markdown('<div class="status-online">● Blueverse: Connected</div>', unsafe_allow_html=True)
         else:
-            st.error("Blueverse: Offline — check credentials + VPN")
+            st.markdown('<div class="status-offline">● Blueverse: Offline</div>', unsafe_allow_html=True)
+            st.caption("Check credentials + VPN")
     else:
         if online:
-            st.success("RAG App: Online")
+            st.markdown('<div class="status-online">● RAG App: Online</div>', unsafe_allow_html=True)
         else:
-            st.error("RAG App: Offline — run `python start_rag_app.py`")
+            st.markdown('<div class="status-offline">● RAG App: Offline</div>', unsafe_allow_html=True)
+            st.caption("Run `python start_rag_app.py`")
 
     st.divider()
 
@@ -189,8 +449,9 @@ with st.sidebar:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 if page == "📄 Documents":
-    st.markdown("## 📄 Policy Documents")
-    st.caption("Upload your own policy documents. The RAG app will use them immediately.")
+    render_header("Policy Documents",
+                  "Upload your policy documents. The RAG app uses them immediately for retrieval.",
+                  "📄")
     st.divider()
 
     # Upload section
@@ -265,8 +526,9 @@ if page == "📄 Documents":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif page == "💬 Chat":
-    st.markdown("## 💬 Chat with RAG App")
-    st.caption("Ask any question. The RAG app retrieves relevant policy sections and answers.")
+    render_header("Chat with RAG App",
+                  "Ask any question. The app retrieves relevant policy sections and answers.",
+                  "💬")
     st.divider()
 
     if not online:
@@ -327,8 +589,9 @@ elif page == "💬 Chat":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif page == "🧪 Start Testing":
-    st.markdown("## 🧪 Start Testing")
-    st.caption("Trigger a test + evaluation cycle manually. Each run fires one question and evaluates the answer.")
+    render_header("Start Testing",
+                  "Trigger automated evaluation cycles. Each cycle fires 3 questions and scores every answer.",
+                  "🧪")
     st.divider()
 
     if not online:
@@ -501,12 +764,12 @@ elif page == "🧪 Start Testing":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif page == "📊 Dashboard":
-    st.markdown("## 📊 Evaluation Dashboard")
-    st.caption(f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    render_header("Evaluation Dashboard",
+                  f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC",
+                  "📊")
 
-    # Auto-refresh dashboard every 30s when auto-testing is active
     if is_auto_running():
-        st.success(f"Auto Testing Active — {_auto_run_count} runs completed | Dashboard refreshes every 30s")
+        live_banner(_auto_run_count)
         st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
 
     col_r, col_dl = st.columns([5, 1])
@@ -548,45 +811,32 @@ elif page == "📊 Dashboard":
     contra_cnt  = int(df["contradicts_golden"].sum()) if "contradicts_golden" in df.columns else 0
 
     # Metric cards
-    st.markdown("#### Layer 1 & 2 — Grounded Metrics (Zero LLM, Pure Math)")
-    st.caption("These scores use no AI — they are calculated purely from code and mathematics. They cannot hallucinate.")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Factual Anchors (L1)",
-              f"{avg_factual:.2f}" if avg_factual is not None else "N/A",
-              help="LAYER 1 — Pure Code. Extracts all numbers, percentages and dollar amounts from the source document and checks if the app's answer contains the same facts. Score 1.0 = every fact in the answer exists in the source. Score 0.0 = answer contains facts not in the document (hallucination). This is OUR ORIGINAL metric — not available in standard tools.")
-    m2.metric("Golden ROUGE-L (L2)",
-              f"{avg_golden:.2f}"  if avg_golden  is not None else "N/A",
-              help="LAYER 2 — Pure Math (LCS formula). A verified reference answer is generated from the FULL document. ROUGE-L measures text overlap between the app's answer and this reference using Longest Common Subsequence. Score 1.0 = answer is very close to reference. Score 0.0 = answer shares almost nothing with reference. ROUGE-L is an INDUSTRY STANDARD metric used since 2004.")
-    m3.metric("Contradicts Golden",
-              contra_cnt,
-              help="Number of runs where the app's answer directly contradicts the verified reference answer. Even if the answer sounds confident, if it contradicts the ground truth it is flagged here. Ideal = 0.")
-    m4.metric("Inconsistent Questions",
-              flagged_cnt,
-              help="Number of questions where the app gave meaningfully different answers across multiple runs. Consistency score below 0.75 triggers this flag. Ideal = 0. High number means the app is unreliable.")
+    # ── Metric Cards Row 1 — Grounded (Zero LLM) ─────────────────────────────
+    st.markdown('<div class="section-title">⚡ Grounded Metrics — Zero AI, Pure Math</div>', unsafe_allow_html=True)
 
-    st.markdown("#### Layer 3 — LLM Judge Metrics (AI-based, Grounded by Reference)")
-    st.caption("These scores use an AI judge that is given the verified reference answer as a reference point — making it much harder for the judge itself to hallucinate.")
-    m5, m6, m7, m8, m9 = st.columns(5)
-    m5.metric("Overall Score",
-              f"{avg_overall:.2f}",
-              help="Final combined score using the formula: 25% Factual Anchors + 25% Golden ROUGE-L + 25% Faithfulness + 15% Relevancy + 10% Completeness. A hard cap of 0.45 is applied if Factual Anchors score below 0.30 — ensuring wrong facts always result in a poor overall score regardless of other metrics. Range: 0.0 to 1.0.")
-    m6.metric("Faithfulness",
-              f"{avg_faith:.2f}",
-              help="INDUSTRY STANDARD metric (from RAGAS framework, 2023). Measures whether every claim in the app's answer is supported by the retrieved context AND consistent with the golden reference. Score 1.0 = fully faithful. Score 0.0 = answer contradicts the source. Our version is stronger than standard RAGAS because the judge also has the golden answer as a reference.")
-    m7.metric("Relevancy",
-              f"{avg_relev:.2f}",
-              help="INDUSTRY STANDARD metric (from RAGAS framework, 2023). Measures whether the answer actually addresses the question asked. Score 1.0 = answer directly answers the question. Score 0.0 = answer is completely off-topic. An answer can be factually correct but irrelevant if it answers a different question.")
-    m8.metric("Completeness",
-              f"{avg_compl:.2f}",
-              help="Measures whether the answer covers ALL important information from the golden reference answer. Score 1.0 = nothing important is missing. Score 0.0 = major information missing. Our version compares against the golden answer (full document), making it stricter than standard tools that only compare against retrieved chunks.")
-    m9.metric("Total Runs",
-              total_runs,
-              help="Total number of question-answer pairs collected and evaluated so far. Each 'Run 1 Cycle' adds 3 runs. More runs = better consistency data and more reliable overall scores.")
+    cards1 = ""
+    cards1 += metric_card("Overall Score",   f"{avg_overall:.2f}", _score_color(avg_overall),  "Weighted combination of all 5 metrics")
+    cards1 += metric_card("Factual Anchors", f"{avg_factual:.2f}" if avg_factual is not None else "N/A", _score_color(avg_factual), "Pure code: numbers in answer vs source document")
+    cards1 += metric_card("Golden ROUGE-L",  f"{avg_golden:.2f}"  if avg_golden  is not None else "N/A", _score_color(avg_golden),  "Math: text similarity vs reference answer (LCS formula)")
+    cards1 += metric_card("Contradictions",  str(contra_cnt),     "#ef4444" if contra_cnt > 0 else "#22c55e", "Runs where answer contradicts the golden reference")
+    cards1 += metric_card("Inconsistent Qs", str(flagged_cnt),    "#ef4444" if flagged_cnt > 0 else "#22c55e", "Questions with contradicting answers across runs")
+    cards1 += metric_card("Total Runs",      str(total_runs),     "#6366f1", "Total question-answer pairs evaluated")
+    st.markdown(f'<div class="metric-grid">{cards1}</div>', unsafe_allow_html=True)
+
+    # ── Metric Cards Row 2 — LLM Judge ────────────────────────────────────────
+    st.markdown('<div class="section-title">🤖 LLM Judge Metrics — Grounded by Reference</div>', unsafe_allow_html=True)
+
+    cards2 = ""
+    cards2 += metric_card("Faithfulness",  f"{avg_faith:.2f}", _score_color(avg_faith), "Is every claim grounded in the source document?")
+    cards2 += metric_card("Relevancy",     f"{avg_relev:.2f}", _score_color(avg_relev), "Does the answer directly address the question?")
+    cards2 += metric_card("Completeness",  f"{avg_compl:.2f}", _score_color(avg_compl), "Does the answer cover all important information?")
+    cards2 += metric_card("Questions Tested", str(unique_qs),  "#6366f1", "Number of unique questions in the test bank")
+    st.markdown(f'<div class="metric-grid">{cards2}</div>', unsafe_allow_html=True)
 
     st.divider()
 
     # Score trend
-    st.markdown("### Score Trend Across All Runs")
+    st.markdown('<div class="section-title">📈 Score Trend Across All Runs</div>', unsafe_allow_html=True)
     fig = go.Figure()
     fig.add_trace(go.Scatter(y=df["overall_score"], name="Overall",
                              line=dict(color="#6366f1", width=3)))
@@ -635,7 +885,7 @@ elif page == "📊 Dashboard":
             st.divider()
 
     # Per-question comparison
-    st.markdown("### Per-Question Answer Comparison")
+    st.markdown('<div class="section-title">🔍 Per-Question Answer Comparison</div>', unsafe_allow_html=True)
     questions_list = df["question"].unique()
     cons_map = {}
     if not cons_df.empty:
@@ -743,8 +993,9 @@ elif page == "📊 Dashboard":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif page == "📖 About Metrics":
-    st.markdown("## 📖 About the Evaluation Metrics")
-    st.caption("A complete reference guide to every metric used in this system — what it measures, whether it is industry standard, the formula, and how to interpret the score.")
+    render_header("About the Evaluation Metrics",
+                  "Complete reference — what each metric measures, its origin, formula, and score interpretation.",
+                  "📖")
     st.divider()
 
     st.info("**How to read this page:** Each metric shows its origin (Standard / Our Design), the formula used, a real example, and what score range means good or bad performance.")
